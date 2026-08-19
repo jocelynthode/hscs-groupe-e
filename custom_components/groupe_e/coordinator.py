@@ -53,33 +53,27 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             today_ts = int(today_start.timestamp() * 1000)
             yesterday_ts = int(yesterday_start.timestamp() * 1000)
 
-            # Fetch historical daily data
-            historical_data = await self.api.get_smartmeter_data(
-                self.premise, self.partner, start_year, now, resolution="daily"
-            )
-
-            # Fetch today's quarter-hourly data
-            today_detailed_data = await self.api.get_smartmeter_data(
-                self.premise, self.partner, today_start, now, resolution="quarter-hourly"
-            )
-
-            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-            yearly_consumption = 0
-            daily_consumption = 0
-            yesterday_consumption = 0
-            monthly_consumption = 0
-            found_historical = False
-            found_detailed = False
-
-            today_ts = int(today_start.timestamp() * 1000)
-            yesterday_ts = int(yesterday_start.timestamp() * 1000)
-
             # Fetch monthly data (pre-aggregated) for yearly and monthly totals
             monthly_data = await self.api.get_smartmeter_data(
                 self.premise, self.partner, start_year, now, resolution="monthly"
             )
 
+            # Fetch daily data for yesterday and today (just 2 days, compact)
+            daily_data = await self.api.get_smartmeter_data(
+                self.premise, self.partner, yesterday_start, now, resolution="daily"
+            )
+
+            # Fetch quarter-hourly data for today's accurate reading
+            today_detailed_data = await self.api.get_smartmeter_data(
+                self.premise, self.partner, today_start, now, resolution="quarter-hourly"
+            )
+
+            yearly_consumption = 0
+            daily_consumption = 0
+            yesterday_consumption = 0
+            monthly_consumption = 0
+
+            # Check if quarter-hourly data is available
             has_detailed_data = False
             if today_detailed_data and isinstance(today_detailed_data, list):
                 for item in today_detailed_data:
@@ -100,42 +94,22 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                         last_entry = measurements[-1]
                         monthly_consumption += last_entry.get("value", 0)
 
-            if historical_data and isinstance(historical_data, list):
-                found_historical = True
-                for item in historical_data:
-                    measurements = item.get("data", {}).get("measurementData", [])
-                    for entry in measurements:
-                        ts = entry.get("timestamp", 0)
-                        value = entry.get("value", 0)
+            # Yesterday: sum daily values with timestamps before local midnight
+            yesterday_consumption = _sum_channel_values(daily_data, today_ts)
 
-                        _LOGGER.debug("Historical entry: ts=%s, value=%s", ts, value)
-
-                        if ts < today_ts:
-                            yearly_consumption += value
-                        else:
-                            if not has_detailed_data:
-                                daily_consumption += value
-                                found_detailed = True
-                                _LOGGER.debug("Using historical daily value for today: %s", value)
-
-                        if yesterday_ts <= ts < today_ts:
-                            yesterday_consumption += value
-
+            # Today's consumption from quarter-hourly data, or fallback to daily
+            daily_consumption = 0
             if has_detailed_data:
-                detailed_sum = 0
                 for item in today_detailed_data:
                     measurements = item.get("data", {}).get("measurementData", [])
-                    if measurements:
-                        found_detailed = True
-                        for entry in measurements:
-                            value = entry.get("value", 0)
-                            # The API returns values in kW for 15-minute intervals.
-                            # Divide by 4 to convert to kWh.
-                            detailed_sum += value / 4
-
-                if detailed_sum >= 0:
-                    daily_consumption = detailed_sum
-                    _LOGGER.debug("Today's detailed sum: %s", detailed_sum)
+                    for entry in measurements:
+                        value = entry.get("value", 0)
+                        # The API returns values in kW for 15-minute intervals.
+                        # Divide by 4 to convert to kWh.
+                        daily_consumption += value / 4
+            else:
+                # Fallback: total daily values (yesterday + today) minus yesterday
+                daily_consumption = _sum_channel_values(daily_data, None) - yesterday_consumption
 
             found_monthly = (
                 monthly_data
@@ -145,8 +119,16 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                     for item in monthly_data
                 )
             )
+            found_daily = (
+                daily_data
+                and isinstance(daily_data, list)
+                and any(
+                    item.get("data", {}).get("measurementData", [])
+                    for item in daily_data
+                )
+            )
 
-            if not found_monthly and not found_historical and not found_detailed:
+            if not found_monthly and not has_detailed_data and not found_daily:
                 _LOGGER.warning("No measurementData found in Groupe-E API response")
                 return self.data if self.data else {
                     "yearly_consumption": 0,
