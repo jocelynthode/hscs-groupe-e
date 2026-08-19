@@ -107,6 +107,9 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                         # The API returns values in kW for 15-minute intervals.
                         # Divide by 4 to convert to kWh.
                         daily_consumption += value / 4
+                # Monthly API is updated once per day; add today's partial data
+                yearly_consumption += daily_consumption
+                monthly_consumption += daily_consumption
             else:
                 # Fallback: total daily values (yesterday + today) minus yesterday
                 daily_consumption = _sum_channel_values(daily_data, None) - yesterday_consumption
