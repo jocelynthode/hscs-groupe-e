@@ -46,7 +46,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             # Alternatively, we can extract this from historical_data if it's there
             month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-            total_consumption = 0
+            yearly_consumption = 0
             daily_consumption = 0
             yesterday_consumption = 0
             monthly_consumption = 0
@@ -88,12 +88,12 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                             _LOGGER.debug("Historical entry: ts=%s, value=%s", ts, value)
 
                             if ts < today_ts:
-                                total_consumption += value
+                                yearly_consumption += value
                             else:
                                 # If today is in historical data, we can use it as fallback if detailed fails
                                 if not has_detailed_data:
                                     daily_consumption += value
-                                    total_consumption += value
+                                    yearly_consumption += value
                                     found_detailed = True # Mark as found to avoid warning
                                     _LOGGER.debug("Using historical daily value for today: %s", value)
 
@@ -129,7 +129,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                             detailed_sum += energy_value
 
                 if detailed_sum >= 0:
-                    total_consumption += detailed_sum
+                    yearly_consumption += detailed_sum
                     daily_consumption = detailed_sum
                     monthly_consumption += detailed_sum
                     _LOGGER.debug("Today's detailed sum: %s", detailed_sum)
@@ -137,7 +137,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             if not found_historical and not found_detailed:
                 _LOGGER.warning("No measurementData found in Groupe-E API response")
                 return self.data if self.data else {
-                    "total_consumption": 0,
+                    "yearly_consumption": 0,
                     "daily_consumption": 0,
                     "yesterday_consumption": 0,
                     "monthly_consumption": 0,
@@ -145,11 +145,11 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
 
             _LOGGER.debug(
                 "Total: %s, Daily: %s, Yesterday: %s, Monthly: %s (historical: %s, detailed: %s)",
-                total_consumption, daily_consumption, yesterday_consumption, monthly_consumption, found_historical, found_detailed
+                yearly_consumption, daily_consumption, yesterday_consumption, monthly_consumption, found_historical, found_detailed
             )
 
             return {
-                "total_consumption": round(total_consumption, 2),
+                "yearly_consumption": round(yearly_consumption, 2),
                 "daily_consumption": round(daily_consumption, 2),
                 "yesterday_consumption": round(yesterday_consumption, 2),
                 "monthly_consumption": round(monthly_consumption, 2),

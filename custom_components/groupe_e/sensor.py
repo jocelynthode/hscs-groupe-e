@@ -26,8 +26,8 @@ class GroupeEEnergySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_name = "Groupe-E Energy Consumption"
-        self._attr_unique_id = f"{coordinator.premise}_energy"
+        self._attr_name = "Groupe-E Yearly Energy Consumption"
+        self._attr_unique_id = f"{coordinator.premise}_yearly_energy"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -35,7 +35,7 @@ class GroupeEEnergySensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return the state of the sensor."""
-        return self.coordinator.data.get("total_consumption")
+        return self.coordinator.data.get("yearly_consumption")
 
 class GroupeEDailyEnergySensor(CoordinatorEntity, SensorEntity):
     """Groupe-E Daily Energy Sensor."""
