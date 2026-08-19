@@ -20,7 +20,7 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "GroupeEOptionsFlowHandler":
         """Get the options flow for this handler."""
-        return GroupeEOptionsFlowHandler(config_entry)
+        return GroupeEOptionsFlowHandler()
 
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
@@ -53,10 +53,6 @@ class ConfigFlow(GroupeEFlowHandler):
 
 class GroupeEOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Groupe-E options."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""

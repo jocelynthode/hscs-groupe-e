@@ -36,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     update_interval = entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
 
     coordinator = GroupeEDataUpdateCoordinator(
-        hass, api, premise, partner, update_interval
+        hass, api, premise, partner, update_interval, entry
     )
     await coordinator.async_config_entry_first_refresh()
 

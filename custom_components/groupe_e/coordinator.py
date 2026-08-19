@@ -9,11 +9,12 @@ _LOGGER = logging.getLogger(__name__)
 class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Groupe-E data."""
 
-    def __init__(self, hass, api, premise, partner, update_interval):
+    def __init__(self, hass, api, premise, partner, update_interval, config_entry):
         """Initialize."""
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=DOMAIN,
             update_interval=timedelta(minutes=update_interval),
         )
