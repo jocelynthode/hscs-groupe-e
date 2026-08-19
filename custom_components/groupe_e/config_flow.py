@@ -11,6 +11,7 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
 )
 
+
 class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Groupe-E Energy."""
 
@@ -26,11 +27,9 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle a flow initialized by the user."""
         errors = {}
         if user_input is not None:
-            # Check if already configured
             await self.async_set_unique_id(user_input[CONF_USERNAME])
             self._abort_if_unique_id_configured()
 
-            # Simple title
             return self.async_create_entry(title=user_input[CONF_USERNAME], data=user_input)
 
         return self.async_show_form(
@@ -46,12 +45,36 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(self, user_input=None):
+        """Handle reconfiguration of the integration."""
+        entry = self._get_reconfigure_entry()
+        errors = {}
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                data=user_input,
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME, default=entry.data.get(CONF_USERNAME)): str,
+                    vol.Required(CONF_PASSWORD, default=entry.data.get(CONF_PASSWORD)): str,
+                    vol.Required(CONF_PREMISE, default=entry.data.get(CONF_PREMISE)): str,
+                    vol.Required(CONF_PARTNER, default=entry.data.get(CONF_PARTNER)): str,
+                }
+            ),
+            errors=errors,
+        )
+
 
 class ConfigFlow(GroupeEFlowHandler):
     """HA entrypoint wrapper for the flow handler."""
     pass
 
-class GroupeEOptionsFlowHandler(config_entries.OptionsFlow):
+
+class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):
     """Handle Groupe-E options."""
 
     async def async_step_init(self, user_input=None):

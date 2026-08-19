@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Groupe-E",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "premise": "Premise ID",
+          "partner": "Partner ID"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Groupe-E",
+        "description": "Update your Groupe-E credentials or premise settings.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "premise": "Premise ID",
+          "partner": "Partner ID"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reconfigure_successful": "Configuration updated successfully."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Groupe-E Options",
+        "data": {
+          "update_interval": "Update interval (minutes, minimum 15)"
+        }
+      }
+    }
+  }
+}
