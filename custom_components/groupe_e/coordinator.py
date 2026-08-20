@@ -60,10 +60,14 @@ def _sum_kw_to_kwh(data: list[dict[str, Any]] | None) -> float:
     """
     total = 0.0
     if not data or not isinstance(data, list):
+        _LOGGER.debug("_sum_kw_to_kwh: no data, returning 0")
         return total
+    count = 0
     for item in data:
         for entry in item.get("data", {}).get("measurementData", []):
             total += _safe_float(entry.get("value")) / 4
+            count += 1
+    _LOGGER.debug("_sum_kw_to_kwh: %d entries, total=%.4f kWh", count, total)
     return total
 
 
@@ -79,7 +83,14 @@ def _get_latest_measurement(
 def _has_measurements(data: list[dict[str, Any]] | None) -> bool:
     """Check if any channel in the response contains measurement entries."""
     if not data:
+        _LOGGER.debug("_has_measurements: data is None or empty")
         return False
+    for item in data:
+        meas = item.get("data", {}).get("measurementData", [])
+        _LOGGER.debug(
+            "_has_measurements: channel=%s, measurementData length=%d",
+            item.get("id"), len(meas),
+        )
     return any(item.get("data", {}).get("measurementData", []) for item in data)
 
 
@@ -97,9 +108,17 @@ def _calculate_daily_consumption(
     yesterday_consumption: float,
 ) -> float:
     """Calculate today's consumption from quarter-hourly data, or fallback to daily."""
-    if _has_measurements(detailed_data):
-        return _sum_kw_to_kwh(detailed_data)
+    has = _has_measurements(detailed_data)
+    _LOGGER.debug("_calculate_daily: has_measurements=%s", has)
+    if has:
+        result = _sum_kw_to_kwh(detailed_data)
+        _LOGGER.debug("_calculate_daily: from quarter-hourly = %.4f", result)
+        return result
     fallback = _sum_measurements(daily_data) - yesterday_consumption
+    _LOGGER.debug(
+        "_calculate_daily: fallback daily_sum=%.4f yesterday=%.4f result=%.4f",
+        _sum_measurements(daily_data), yesterday_consumption, max(0.0, fallback),
+    )
     return max(0.0, fallback)
 
 
