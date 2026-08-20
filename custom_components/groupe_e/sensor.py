@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CURRENCY, DOMAIN
+from .const import CURRENCY, DOMAIN, ENERGY_PRICE_UNIT
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -63,7 +63,7 @@ class GroupeECostSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"Groupe-E Energy Cost {coordinator._label}"
         self._attr_unique_id = f"{coordinator.premise}_cost"
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_unit_of_measurement = CURRENCY
         self._attr_available = True
 
@@ -87,9 +87,8 @@ class GroupeEPriceSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = f"Groupe-E Electricity Price {coordinator._label}"
         self._attr_unique_id = f"{coordinator.premise}_price"
-        self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = f"{CURRENCY}/kWh"
+        self._attr_native_unit_of_measurement = ENERGY_PRICE_UNIT
         self._attr_available = True
 
     @property

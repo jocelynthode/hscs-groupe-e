@@ -28,3 +28,4 @@ DEFAULT_TARIFF_SCHEDULE = [{"start": 7, "end": 12}, {"start": 17, "end": 23}]
 TARIFF_TIMEZONE = "Europe/Zurich"
 
 CURRENCY = "CHF"
+ENERGY_PRICE_UNIT = "CHF/kWh"
