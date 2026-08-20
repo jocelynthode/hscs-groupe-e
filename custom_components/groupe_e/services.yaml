@@ -9,3 +9,10 @@ reset_statistics:
       selector:
         config_entry:
           integration: groupe_e
+    rebuild_since:
+      name: Rebuild since
+      description: Only rebuild statistics from this date onward (ISO format, e.g. 2026-01-01). Defaults to start of current year.
+      required: false
+      selector:
+        text:
+          type: date

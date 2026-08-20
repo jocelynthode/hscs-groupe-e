@@ -1,12 +1,13 @@
 """The Groupe-E Energy integration."""
 
 import logging
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import voluptuous as vol
-from homeassistant.components.recorder import get_instance
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import GroupeEAPI
@@ -16,6 +17,7 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    TARIFF_TIMEZONE,
 )
 from .coordinator import GroupeEDataUpdateCoordinator
 
@@ -78,23 +80,29 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             _LOGGER.error("Config entry %s not found", entry_id)
             return
 
-        statistic_ids = coordinator.statistic_ids
+        rebuild_since = call.data.get("rebuild_since")
+        local_tz = ZoneInfo(TARIFF_TIMEZONE)
+        now_local = datetime.now(local_tz)
+        year_start_local = now_local.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        if rebuild_since is not None:
+            if rebuild_since.tzinfo is None:
+                rebuild_since = rebuild_since.replace(tzinfo=ZoneInfo(TARIFF_TIMEZONE))
+            rebuild_dt = rebuild_since.astimezone(local_tz).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            coordinator._rebuild_since = rebuild_dt.astimezone(timezone.utc)
+        else:
+            coordinator._rebuild_since = year_start_local.astimezone(timezone.utc)
 
         _LOGGER.warning(
-            "Resetting Groupe-E statistics for entry %s: %s",
+            "Resetting Groupe-E statistics for entry %s (rebuild_since=%s)",
             entry_id,
-            statistic_ids,
+            coordinator._rebuild_since,
         )
 
-        @callback
-        def _statistics_cleared() -> None:
-            """Refresh coordinator after statistics have been cleared."""
-            hass.create_task(coordinator.async_request_refresh())
-
-        get_instance(hass).async_clear_statistics(
-            statistic_ids,
-            on_done=_statistics_cleared,
-        )
+        hass.create_task(coordinator.async_request_refresh())
 
     hass.services.async_register(
         DOMAIN,
@@ -103,6 +111,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         schema=vol.Schema(
             {
                 vol.Required("entry_id"): vol.Coerce(str),
+                vol.Optional("rebuild_since"): vol.Coerce(datetime.fromisoformat),
             }
         ),
     )

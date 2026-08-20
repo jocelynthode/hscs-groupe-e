@@ -15,6 +15,7 @@ from homeassistant.components.recorder.models import (
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -200,6 +201,11 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         self._cost_qh_id = f"{base_id}_cost"
         self._current_tariff: str = "normal"
         self._current_price: float = 0.0
+        self._latest_nt_sum: float | None = None
+        self._latest_ht_sum: float | None = None
+        self._latest_total_sum: float | None = None
+        self._latest_cost_sum: float | None = None
+        self._rebuild_since: datetime | None = None
         _LOGGER.debug(
             "Initialized coordinator: premise=%s, statistic_ids=%s, %s, %s, %s",
             premise,
@@ -271,14 +277,24 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "ht": float(ht),
         }
 
+    async def _async_read_stats_before(
+        self, cutoff: datetime
+    ) -> dict[str, list[dict]]:
+        """Read all stored statistics before cutoff for every statistic ID."""
+        return await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            datetime.fromtimestamp(0, tz=timezone.utc),
+            cutoff,
+            set(self.statistic_ids),
+            "hour",
+            None,
+            {"sum"},
+        )
+
     async def _async_update_data(self):
         """Fetch smart meter data and insert statistics for quarter-hourly consumption and tariff split."""
         try:
-            last_nt_stat = await self._async_get_last_stat(self._normal_tariff_qh_id)
-            last_ht_stat = await self._async_get_last_stat(self._high_tariff_qh_id)
-            last_total_stat = await self._async_get_last_stat(self._total_energy_qh_id)
-            last_cost_stat = await self._async_get_last_stat(self._cost_qh_id)
-
             local_tz = ZoneInfo(TARIFF_TIMEZONE)
             now_local = datetime.now(local_tz)
             today_start_local = now_local.replace(
@@ -286,36 +302,67 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             )
             today_start = today_start_local.astimezone(timezone.utc)
 
-            nt_has_data = last_nt_stat and self._normal_tariff_qh_id in last_nt_stat
-            ht_has_data = last_ht_stat and self._high_tariff_qh_id in last_ht_stat
+            year_start_local = now_local.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+            year_start = year_start_local.astimezone(timezone.utc)
 
-            if nt_has_data and ht_has_data:
-                nt_last_start = last_nt_stat[self._normal_tariff_qh_id][0]["start"]
-                ht_last_start = last_ht_stat[self._high_tariff_qh_id][0]["start"]
-                if nt_last_start != ht_last_start:
-                    _LOGGER.warning(
-                        "NT and HT statistics out of sync: NT=%s, HT=%s. Rebuilding from 365 days.",
-                        datetime.fromtimestamp(nt_last_start, tz=timezone.utc),
-                        datetime.fromtimestamp(ht_last_start, tz=timezone.utc),
-                    )
-                    start = today_start - timedelta(days=365)
+            rebuild_since = self._rebuild_since
+            self._rebuild_since = None
+
+            if rebuild_since is not None:
+                pre_stats = await self._async_read_stats_before(rebuild_since)
+                get_instance(self.hass).async_clear_statistics(self.statistic_ids)
+                if pre_stats:
+                    self._reinsert_pre_stats(pre_stats)
+                nt_pre = pre_stats.get(self._normal_tariff_qh_id, []) if pre_stats else []
+                if nt_pre:
+                    last_nt_stat = {self._normal_tariff_qh_id: [nt_pre[-1]]}
+                    last_ht_stat = {self._high_tariff_qh_id: [pre_stats[self._high_tariff_qh_id][-1]]}
+                    last_total_stat = {self._total_energy_qh_id: [pre_stats[self._total_energy_qh_id][-1]]}
+                    last_cost_stat = {self._cost_qh_id: [pre_stats[self._cost_qh_id][-1]]}
+                else:
                     last_nt_stat = None
                     last_ht_stat = None
                     last_total_stat = None
                     last_cost_stat = None
-                else:
-                    start = datetime.fromtimestamp(nt_last_start, tz=timezone.utc)
-                    _LOGGER.debug("All stats present, requesting from %s", start)
+                start = rebuild_since
             else:
-                start = today_start - timedelta(days=365)
-                _LOGGER.debug(
-                    "Missing some tariff stats, rebuilding both from %s",
-                    start,
-                )
-                last_nt_stat = None
-                last_ht_stat = None
-                last_total_stat = None
-                last_cost_stat = None
+                last_nt_stat = await self._async_get_last_stat(self._normal_tariff_qh_id)
+                last_ht_stat = await self._async_get_last_stat(self._high_tariff_qh_id)
+                last_total_stat = await self._async_get_last_stat(self._total_energy_qh_id)
+                last_cost_stat = await self._async_get_last_stat(self._cost_qh_id)
+
+                nt_has_data = last_nt_stat and self._normal_tariff_qh_id in last_nt_stat
+                ht_has_data = last_ht_stat and self._high_tariff_qh_id in last_ht_stat
+
+                if nt_has_data and ht_has_data:
+                    nt_last_start = last_nt_stat[self._normal_tariff_qh_id][0]["start"]
+                    ht_last_start = last_ht_stat[self._high_tariff_qh_id][0]["start"]
+                    if nt_last_start != ht_last_start:
+                        _LOGGER.warning(
+                            "NT and HT statistics out of sync: NT=%s, HT=%s. Rebuilding from start of year.",
+                            datetime.fromtimestamp(nt_last_start, tz=timezone.utc),
+                            datetime.fromtimestamp(ht_last_start, tz=timezone.utc),
+                        )
+                        start = year_start
+                        last_nt_stat = None
+                        last_ht_stat = None
+                        last_total_stat = None
+                        last_cost_stat = None
+                    else:
+                        start = datetime.fromtimestamp(nt_last_start, tz=timezone.utc)
+                        _LOGGER.debug("All stats present, requesting from %s", start)
+                else:
+                    start = year_start
+                    _LOGGER.debug(
+                        "Missing some tariff stats, rebuilding from %s",
+                        start,
+                    )
+                    last_nt_stat = None
+                    last_ht_stat = None
+                    last_total_stat = None
+                    last_cost_stat = None
 
             if start >= today_start:
                 _LOGGER.debug("Statistics already up to date, skipping API request")
@@ -415,6 +462,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "kWh",
             EnergyConverter.UNIT_CLASS,
         )
+        self._latest_nt_sum = nt_statistics[-1]["sum"] if nt_statistics else nt_running_sum
         self._insert_statistics(
             ht_statistics,
             self._high_tariff_qh_id,
@@ -422,6 +470,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "kWh",
             EnergyConverter.UNIT_CLASS,
         )
+        self._latest_ht_sum = ht_statistics[-1]["sum"] if ht_statistics else ht_running_sum
         self._insert_statistics(
             total_statistics,
             self._total_energy_qh_id,
@@ -429,9 +478,55 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "kWh",
             EnergyConverter.UNIT_CLASS,
         )
+        self._latest_total_sum = total_statistics[-1]["sum"] if total_statistics else total_running_sum
         self._insert_statistics(
             cost_statistics, self._cost_qh_id, "Energy Cost", "CHF", None
         )
+        self._latest_cost_sum = cost_statistics[-1]["sum"] if cost_statistics else cost_running_sum
+
+    def _reinsert_pre_stats(
+        self, pre_stats: dict[str, list[dict]]
+    ) -> None:
+        """Re-insert pre-rebuild statistics after clearing."""
+        labels = {
+            self._normal_tariff_qh_id: ("Normal Tariff", "kWh", EnergyConverter.UNIT_CLASS),
+            self._high_tariff_qh_id: ("High Tariff", "kWh", EnergyConverter.UNIT_CLASS),
+            self._total_energy_qh_id: ("Grid Energy", "kWh", EnergyConverter.UNIT_CLASS),
+            self._cost_qh_id: ("Energy Cost", "CHF", None),
+        }
+        for stat_id, entries in pre_stats.items():
+            if stat_id not in labels or not entries:
+                continue
+            label, unit, unit_class = labels[stat_id]
+            entries.sort(key=lambda e: e["start"] if isinstance(e["start"], datetime) else datetime.fromtimestamp(e["start"], tz=timezone.utc))
+            prev_sum = 0.0
+            statistics: list[StatisticData] = []
+            for e in entries:
+                start = e["start"]
+                if isinstance(start, (int, float)):
+                    start = datetime.fromtimestamp(start, tz=timezone.utc)
+                s = e["sum"]
+                state = e.get("state", s - prev_sum)
+                statistics.append(
+                    StatisticData(start=start, state=state, sum=s)
+                )
+                prev_sum = s
+            metadata = StatisticMetaData(
+                mean_type=StatisticMeanType.NONE,
+                has_sum=True,
+                name=f"Groupe-E {label} {self.premise}",
+                source=DOMAIN,
+                statistic_id=stat_id,
+                unit_class=unit_class,
+                unit_of_measurement=unit,
+            )
+            _LOGGER.debug(
+                "Re-inserting %d pre-rebuild entries for %s (last sum=%.4f)",
+                len(statistics),
+                stat_id,
+                statistics[-1]["sum"],
+            )
+            async_add_external_statistics(self.hass, metadata, statistics)
 
     def _insert_statistics(
         self,

@@ -1,9 +1,14 @@
 """Tests for the Groupe-E coordinator calculation functions."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import MethodType
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from custom_components.groupe_e.coordinator import (
+    GroupeEDataUpdateCoordinator,
     _is_high_tariff,
     _parse_timestamp_ms,
     _safe_float,
@@ -470,3 +475,134 @@ class TestMeasurementsToStatisticsByTariff:
         assert len(ht) == 1
         assert nt[0]["state"] == 1.0
         assert total[0]["state"] == 1.0
+
+
+class TestReinsertPreStats:
+    """Tests for _reinsert_pre_stats method."""
+
+    @pytest.fixture
+    def coordinator(self):
+        """Create a mock coordinator with the real _reinsert_pre_stats bound."""
+        coord = MagicMock(spec=GroupeEDataUpdateCoordinator)
+        coord.premise = "283122"
+        coord._normal_tariff_qh_id = "groupe_e:energy_consumption_283122_normal_tariff"
+        coord._high_tariff_qh_id = "groupe_e:energy_consumption_283122_high_tariff"
+        coord._total_energy_qh_id = "groupe_e:energy_consumption_283122_total"
+        coord._cost_qh_id = "groupe_e:energy_consumption_283122_cost"
+        coord.hass = MagicMock()
+        coord._reinsert_pre_stats = MethodType(
+            GroupeEDataUpdateCoordinator._reinsert_pre_stats, coord
+        )
+        return coord
+
+    def test_empty_pre_stats(self, coordinator):
+        pre_stats = {}
+        with patch(
+            "custom_components.groupe_e.coordinator.async_add_external_statistics"
+        ) as mock_insert:
+            coordinator._reinsert_pre_stats(pre_stats)
+            mock_insert.assert_not_called()
+
+    def test_single_entry_per_stat(self, coordinator):
+        start = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+        pre_stats = {
+            coordinator._normal_tariff_qh_id: [
+                {"start": start, "sum": 100.0, "state": 100.0},
+            ],
+            coordinator._high_tariff_qh_id: [
+                {"start": start, "sum": 200.0, "state": 200.0},
+            ],
+            coordinator._total_energy_qh_id: [
+                {"start": start, "sum": 300.0, "state": 300.0},
+            ],
+            coordinator._cost_qh_id: [
+                {"start": start, "sum": 50.0, "state": 50.0},
+            ],
+        }
+        with patch(
+            "custom_components.groupe_e.coordinator.async_add_external_statistics"
+        ) as mock_insert:
+            coordinator._reinsert_pre_stats(pre_stats)
+            assert mock_insert.call_count == 4
+
+    def test_multiple_entries_cumulative(self, coordinator):
+        hour = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+        entries = [
+            {"start": hour + timedelta(hours=i), "sum": 100.0 + i * 10.0, "state": 10.0}
+            for i in range(5)
+        ]
+        pre_stats = {coordinator._normal_tariff_qh_id: entries}
+        with patch(
+            "custom_components.groupe_e.coordinator.async_add_external_statistics"
+        ) as mock_insert:
+            coordinator._reinsert_pre_stats(pre_stats)
+            mock_insert.assert_called_once()
+            _hass, _metadata, statistics = mock_insert.call_args.args
+            assert len(statistics) == 5
+            for i, s in enumerate(statistics):
+                assert s["start"] == hour + timedelta(hours=i)
+                assert s["sum"] == 100.0 + i * 10.0
+
+
+class TestInsertQuarterHourlyStatistics:
+    """Tests for _insert_quarter_hourly_statistics method."""
+
+    @pytest.fixture
+    def coordinator(self):
+        """Create a coordinator mock with the real method bound."""
+        coord = MagicMock(spec=GroupeEDataUpdateCoordinator)
+        coord.premise = "283122"
+        coord._normal_tariff_qh_id = "groupe_e:energy_consumption_283122_normal_tariff"
+        coord._high_tariff_qh_id = "groupe_e:energy_consumption_283122_high_tariff"
+        coord._total_energy_qh_id = "groupe_e:energy_consumption_283122_total"
+        coord._cost_qh_id = "groupe_e:energy_consumption_283122_cost"
+        coord._get_ht_periods = MagicMock(return_value=DEFAULT_HT_PERIODS)
+        coord._get_prices = MagicMock(return_value={"nt": 0.2, "ht": 0.3})
+        coord._insert_statistics = MagicMock()
+        coord._latest_nt_sum = None
+        coord._latest_ht_sum = None
+        coord._latest_total_sum = None
+        coord._latest_cost_sum = None
+        coord._insert_quarter_hourly_statistics = MethodType(
+            GroupeEDataUpdateCoordinator._insert_quarter_hourly_statistics, coord
+        )
+        return coord
+
+    async def test_sets_latest_sums_with_data(self, coordinator):
+        ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
+        data = [{"data": {"measurementData": [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]}}]
+        await coordinator._insert_quarter_hourly_statistics(data, None, None, None, None)
+        assert coordinator._latest_nt_sum == 0.0
+        assert coordinator._latest_ht_sum == 1.0
+        assert coordinator._latest_total_sum == 1.0
+        assert coordinator._latest_cost_sum == 0.3
+
+    async def test_sets_latest_sums_from_existing(self, coordinator):
+        existing_hour = datetime(2026, 8, 19, 7, 0, tzinfo=timezone.utc)
+        new_hour = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
+        nt_stat = {coordinator._normal_tariff_qh_id: [{"start": existing_hour.timestamp(), "sum": 50.0}]}
+        ht_stat = {coordinator._high_tariff_qh_id: [{"start": existing_hour.timestamp(), "sum": 60.0}]}
+        total_stat = {coordinator._total_energy_qh_id: [{"start": existing_hour.timestamp(), "sum": 110.0}]}
+        cost_stat = {coordinator._cost_qh_id: [{"start": existing_hour.timestamp(), "sum": 12.0}]}
+        data = [{"data": {"measurementData": [{"timestamp": int(new_hour.timestamp() * 1000), "value": 4.0}]}}]
+        await coordinator._insert_quarter_hourly_statistics(data, nt_stat, ht_stat, total_stat, cost_stat)
+        assert coordinator._latest_nt_sum == 50.0
+        assert coordinator._latest_ht_sum == 61.0
+        assert coordinator._latest_total_sum == 111.0
+
+    async def test_no_channel_data(self, coordinator):
+        await coordinator._insert_quarter_hourly_statistics([], None, None, None, None)
+        coordinator._insert_statistics.assert_not_called()
+        assert coordinator._latest_nt_sum is None
+        assert coordinator._latest_ht_sum is None
+        assert coordinator._latest_total_sum is None
+        assert coordinator._latest_cost_sum is None
+
+    async def test_no_measurements(self, coordinator):
+        data = [{"data": {"measurementData": []}}]
+        await coordinator._insert_quarter_hourly_statistics(data, None, None, None, None)
+        coordinator._insert_statistics.assert_not_called()
+        assert coordinator._latest_nt_sum is None
+        assert coordinator._latest_ht_sum is None
+        assert coordinator._latest_total_sum is None
+        assert coordinator._latest_cost_sum is None
