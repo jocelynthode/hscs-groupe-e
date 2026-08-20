@@ -58,6 +58,29 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                 self.premise, self.partner, start_year, now, resolution="monthly"
             )
 
+            # The Groupe-E API can return the wrong resolution (e.g., quarter-hourly data
+            # for a monthly request). Validate by checking channel IDs and retry/fallback.
+            _monthly_api_ok = True
+            if isinstance(monthly_data, list):
+                def has_wrong_resolution(data):
+                    return any(
+                        "quarterhourly" in (item.get("id") or "").lower()
+                        for item in data
+                    )
+                if has_wrong_resolution(monthly_data):
+                    _LOGGER.debug("Monthly API returned wrong resolution, retrying")
+                    monthly_data = await self.api.get_smartmeter_data(
+                        self.premise, self.partner, start_year, now, resolution="monthly"
+                    )
+                    if has_wrong_resolution(monthly_data):
+                        _LOGGER.debug("Monthly API still wrong after retry, falling back to daily data")
+                        monthly_data = await self.api.get_smartmeter_data(
+                            self.premise, self.partner, start_year, now, resolution="daily"
+                        )
+                        _monthly_api_ok = False
+
+            _LOGGER.debug("Monthly data entries: %s", len(monthly_data) if isinstance(monthly_data, list) else "not a list")
+
             # Fetch daily data for yesterday and today (just 2 days, compact)
             daily_data = await self.api.get_smartmeter_data(
                 self.premise, self.partner, yesterday_start, now, resolution="daily"
@@ -83,16 +106,28 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Yearly: sum all monthly NT + HT values (Jan through current partial month)
             yearly_consumption = _sum_channel_values(monthly_data)
+            _LOGGER.debug("Monthly sum before today data: %s", yearly_consumption)
 
             # Monthly: current month-to-date from the last monthly entry per channel
+            # (or sum of daily entries in current month when using daily fallback)
             monthly_consumption = 0
             if monthly_data and isinstance(monthly_data, list):
-                for item in monthly_data:
-                    measurements = item.get("data", {}).get("measurementData", [])
-                    if measurements:
-                        # API returns months chronologically; last = current (partial) month
-                        last_entry = measurements[-1]
-                        monthly_consumption += last_entry.get("value", 0)
+                if _monthly_api_ok:
+                    for item in monthly_data:
+                        measurements = item.get("data", {}).get("measurementData", [])
+                        _LOGGER.debug("Channel %s has %d measurement entries", item.get("id"), len(measurements))
+                        if measurements:
+                            last_entry = measurements[-1]
+                            monthly_consumption += last_entry.get("value", 0)
+                else:
+                    current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    current_month_ts = int(current_month_start.timestamp() * 1000)
+                    for item in monthly_data:
+                        measurements = item.get("data", {}).get("measurementData", [])
+                        for entry in measurements:
+                            ts = entry.get("timestamp", 0)
+                            if ts >= current_month_ts:
+                                monthly_consumption += entry.get("value", 0)
 
             # Yesterday: sum daily values with timestamps before local midnight
             yesterday_consumption = _sum_channel_values(daily_data, today_ts)
