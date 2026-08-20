@@ -1,7 +1,7 @@
 {
-    "name": "Groupe-E Energy",
-    "render_readme": true,
-    "country": "CH",
-    "homeassistant": "2024.1.0",
-    "iot_class": "cloud_polling"
+  "name": "Groupe-E Energy",
+  "render_readme": true,
+  "country": "CH",
+  "homeassistant": "2024.1.0",
+  "iot_class": "cloud_polling"
 }

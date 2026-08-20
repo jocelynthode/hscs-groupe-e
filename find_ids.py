@@ -2,6 +2,7 @@ import requests
 import json
 import getpass
 
+
 def get_groupe_e_ids():
     print("--- Groupe-E ID Finder ---")
     print("This script will help you find your Premise and Partner IDs.")
@@ -9,14 +10,16 @@ def get_groupe_e_ids():
     email = input("Email: ")
     password = getpass.getpass("Password: ")
 
-    token_url = "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/token"
+    token_url = (
+        "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/token"
+    )
 
     payload = {
-        'grant_type': 'password',
-        'client_id': 'portal',
-        'username': email,
-        'password': password,
-        'scope': 'openid email profile'
+        "grant_type": "password",
+        "client_id": "portal",
+        "username": email,
+        "password": password,
+        "scope": "openid email profile",
     }
 
     try:
@@ -25,7 +28,9 @@ def get_groupe_e_ids():
 
         if response.status_code != 200:
             print(f"Error: Login failed (Status: {response.status_code})")
-            print("Check your credentials or verify if 'Password Grant' is enabled for this client.")
+            print(
+                "Check your credentials or verify if 'Password Grant' is enabled for this client."
+            )
             return
 
         token_data = response.json()
@@ -42,12 +47,17 @@ def get_groupe_e_ids():
             print(f"Partner ID(s): {user_info.get('business_partner', 'Not found')}")
             print(f"Email: {user_info.get('email', 'Not found')}")
             print("\nNote: The 'Premise ID' is specific to your installation address.")
-            print("If it's not listed above, please use the Network Tab method described in README.md.")
+            print(
+                "If it's not listed above, please use the Network Tab method described in README.md."
+            )
         else:
-            print("Could not retrieve user info. Please use the manual method in README.md.")
+            print(
+                "Could not retrieve user info. Please use the manual method in README.md."
+            )
 
     except Exception as e:
         print(f"An error occurred: {e}")
+
 
 if __name__ == "__main__":
     get_groupe_e_ids()

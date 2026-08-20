@@ -80,10 +80,7 @@ def _has_measurements(data: list[dict[str, Any]] | None) -> bool:
     """Check if any channel in the response contains measurement entries."""
     if not data:
         return False
-    return any(
-        item.get("data", {}).get("measurementData", [])
-        for item in data
-    )
+    return any(item.get("data", {}).get("measurementData", []) for item in data)
 
 
 def _calculate_yesterday_consumption(

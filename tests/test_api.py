@@ -65,7 +65,9 @@ class TestLogin:
         assert api._token is None
 
     async def test_connection_error_raises(self, api, mock_session):
-        mock_session.post.side_effect = aiohttp.ClientConnectionError("connection refused")
+        mock_session.post.side_effect = aiohttp.ClientConnectionError(
+            "connection refused"
+        )
         with pytest.raises(GroupeEAuthError):
             await api._async_login()
 
@@ -80,7 +82,8 @@ class TestGetSmartmeterData:
             _mock_response(200, expected)
         )
         result = await api.get_smartmeter_data(
-            "premise", "partner",
+            "premise",
+            "partner",
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
             resolution="monthly",
@@ -98,7 +101,8 @@ class TestGetSmartmeterData:
         ]
 
         result = await api.get_smartmeter_data(
-            "premise", "partner",
+            "premise",
+            "partner",
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
         )
@@ -109,7 +113,9 @@ class TestGetSmartmeterData:
         api._token = "tok_expired"
         api._token_expires_at = datetime(2099, 1, 1, tzinfo=timezone.utc)
 
-        login_resp = _mock_response(200, {"access_token": "tok_fresh", "expires_in": 3600})
+        login_resp = _mock_response(
+            200, {"access_token": "tok_fresh", "expires_in": 3600}
+        )
         data_resp = _mock_response(200, [{"id": "NT"}])
         err_resp = _mock_response(401, {})
 
@@ -120,7 +126,8 @@ class TestGetSmartmeterData:
         ]
 
         result = await api.get_smartmeter_data(
-            "premise", "partner",
+            "premise",
+            "partner",
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
         )
@@ -136,7 +143,8 @@ class TestGetSmartmeterData:
 
         with pytest.raises(GroupeEAuthError):
             await api.get_smartmeter_data(
-                "premise", "partner",
+                "premise",
+                "partner",
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
                 datetime(2026, 8, 20, tzinfo=timezone.utc),
             )
@@ -147,7 +155,8 @@ class TestGetSmartmeterData:
         mock_session.post.return_value = _mock_context_manager(_mock_response(403, {}))
         with pytest.raises(GroupeEAuthError):
             await api.get_smartmeter_data(
-                "p", "pn",
+                "p",
+                "pn",
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
                 datetime(2026, 8, 20, tzinfo=timezone.utc),
             )
@@ -158,7 +167,8 @@ class TestGetSmartmeterData:
         mock_session.post.return_value = _mock_context_manager(_mock_response(429, {}))
         with pytest.raises(GroupeEApiError):
             await api.get_smartmeter_data(
-                "p", "pn",
+                "p",
+                "pn",
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
                 datetime(2026, 8, 20, tzinfo=timezone.utc),
             )
@@ -169,7 +179,8 @@ class TestGetSmartmeterData:
         mock_session.post.return_value = _mock_context_manager(_mock_response(500, {}))
         with pytest.raises(GroupeEApiError):
             await api.get_smartmeter_data(
-                "p", "pn",
+                "p",
+                "pn",
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
                 datetime(2026, 8, 20, tzinfo=timezone.utc),
             )
@@ -178,7 +189,9 @@ class TestGetSmartmeterData:
         api._token = "tok123"
         api._token_expires_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
-        login_resp = _mock_response(200, {"access_token": "tok_fresh", "expires_in": 3600})
+        login_resp = _mock_response(
+            200, {"access_token": "tok_fresh", "expires_in": 3600}
+        )
         data_resp = _mock_response(200, [{"id": "NT"}])
 
         mock_session.post.side_effect = [
@@ -187,7 +200,8 @@ class TestGetSmartmeterData:
         ]
 
         result = await api.get_smartmeter_data(
-            "premise", "partner",
+            "premise",
+            "partner",
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
         )

@@ -8,12 +8,12 @@ To test this integration, you should have a Home Assistant development environme
 
 ### Step-by-Step Testing
 
-1. **Deploy to custom_components**: 
+1. **Deploy to custom_components**:
    Copy the `custom_components/groupe_e` directory to your Home Assistant `config/custom_components` folder.
 2. **Check Logs**:
    Restart Home Assistant and monitor the logs (`home-assistant.log`). You should see no errors related to the `groupe_e` component during startup.
 3. **Verify OAuth2 Flow**:
-   Go to **Settings** > **Devices & Services** > **Add Integration**. Search for "Groupe-E Energy". 
+   Go to **Settings** > **Devices & Services** > **Add Integration**. Search for "Groupe-E Energy".
    - Ensure the external login page (Keycloak) opens correctly.
    - Verify that after signing in, you are redirected back to Home Assistant and the "Success" message appears.
 4. **Sensor Verification**:
@@ -38,17 +38,17 @@ async def test_api():
     token = "YOUR_TEMP_TOKEN_HERE"
     async with ClientSession() as session:
         api = GroupeEAPI(session, token)
-        
+
         # Test User Info
         user_info = await api.get_user_info()
         print(f"User Info: {user_info}")
-        
+
         # Test Smart Meter Data
         premise = "106180" # Replace with yours
         partner = "6050184" # Replace with yours
         end = datetime.now()
         start = end - timedelta(days=1)
-        
+
         data = await api.get_smartmeter_data(premise, partner, start, end)
         print(f"Smart Meter Data: {data}")
 
@@ -68,6 +68,14 @@ logger:
 ```
 
 Check the logs for:
+
 - "Fetching smartmeter data" messages.
 - JSON responses from the API (be careful, as these might contain PII).
 - Any `UpdateFailed` errors.
+
+## 4. Run Tests
+
+```bash
+pip install -r requirements_test.txt
+python -m pytest tests/ -v
+```

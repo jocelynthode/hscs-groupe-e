@@ -1,4 +1,5 @@
 """Config flow for Groupe-E Energy integration."""
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -19,7 +20,9 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     @callback
     @staticmethod
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "GroupeEOptionsFlowHandler":
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> "GroupeEOptionsFlowHandler":
         """Get the options flow for this handler."""
         return GroupeEOptionsFlowHandler()
 
@@ -30,7 +33,9 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(user_input[CONF_USERNAME])
             self._abort_if_unique_id_configured()
 
-            return self.async_create_entry(title=user_input[CONF_USERNAME], data=user_input)
+            return self.async_create_entry(
+                title=user_input[CONF_USERNAME], data=user_input
+            )
 
         return self.async_show_form(
             step_id="user",
@@ -59,10 +64,18 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_USERNAME, default=entry.data.get(CONF_USERNAME)): str,
-                    vol.Required(CONF_PASSWORD, default=entry.data.get(CONF_PASSWORD)): str,
-                    vol.Required(CONF_PREMISE, default=entry.data.get(CONF_PREMISE)): str,
-                    vol.Required(CONF_PARTNER, default=entry.data.get(CONF_PARTNER)): str,
+                    vol.Required(
+                        CONF_USERNAME, default=entry.data.get(CONF_USERNAME)
+                    ): str,
+                    vol.Required(
+                        CONF_PASSWORD, default=entry.data.get(CONF_PASSWORD)
+                    ): str,
+                    vol.Required(
+                        CONF_PREMISE, default=entry.data.get(CONF_PREMISE)
+                    ): str,
+                    vol.Required(
+                        CONF_PARTNER, default=entry.data.get(CONF_PARTNER)
+                    ): str,
                 }
             ),
             errors=errors,
@@ -71,6 +84,7 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
 class ConfigFlow(GroupeEFlowHandler):
     """HA entrypoint wrapper for the flow handler."""
+
     pass
 
 

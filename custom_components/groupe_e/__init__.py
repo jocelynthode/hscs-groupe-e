@@ -1,4 +1,5 @@
 """The Groupe-E Energy integration."""
+
 from datetime import timedelta
 import logging
 
@@ -20,6 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Groupe-E Energy from a config entry."""
     username = entry.data.get(CONF_USERNAME)
@@ -27,11 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     premise = entry.data.get(CONF_PREMISE)
     partner = entry.data.get(CONF_PARTNER)
 
-    api = GroupeEAPI(
-        async_get_clientsession(hass),
-        username,
-        password
-    )
+    api = GroupeEAPI(async_get_clientsession(hass), username, password)
 
     update_interval = entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
 

@@ -1,4 +1,5 @@
 """Sensor platform for Groupe-E."""
+
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
@@ -7,6 +8,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up the sensor platform."""
@@ -19,6 +21,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             GroupeEMonthlyEnergySensor(coordinator),
         ]
     )
+
 
 class GroupeEEnergySensor(CoordinatorEntity, SensorEntity):
     """Groupe-E Energy Sensor."""
@@ -37,6 +40,7 @@ class GroupeEEnergySensor(CoordinatorEntity, SensorEntity):
         """Return the state of the sensor."""
         return self.coordinator.data.get("yearly_consumption")
 
+
 class GroupeEDailyEnergySensor(CoordinatorEntity, SensorEntity):
     """Groupe-E Daily Energy Sensor."""
 
@@ -54,6 +58,7 @@ class GroupeEDailyEnergySensor(CoordinatorEntity, SensorEntity):
         """Return the state of the sensor."""
         return self.coordinator.data.get("daily_consumption")
 
+
 class GroupeEYesterdayEnergySensor(CoordinatorEntity, SensorEntity):
     """Groupe-E Yesterday Energy Sensor."""
 
@@ -70,6 +75,7 @@ class GroupeEYesterdayEnergySensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         """Return the state of the sensor."""
         return self.coordinator.data.get("yesterday_consumption")
+
 
 class GroupeEMonthlyEnergySensor(CoordinatorEntity, SensorEntity):
     """Groupe-E Monthly Energy Sensor."""
