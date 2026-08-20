@@ -8,6 +8,8 @@
           "password": "Mot de passe",
           "premise": "ID du site (p. ex. 106180)",
           "partner": "ID partenaire (p. ex. 6050184)",
+          "nt_price": "Prix bas tarif (CHF/kWh)",
+          "ht_price": "Prix haut tarif (CHF/kWh)",
           "stat_id_discriminator": "Discriminant des statistiques (optionnel, par défaut l'ID du site)"
         },
         "description": "Saisissez vos identifiants Groupe-E et les IDs trouvés dans votre portail."

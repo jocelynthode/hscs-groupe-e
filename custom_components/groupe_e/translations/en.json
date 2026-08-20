@@ -8,6 +8,8 @@
           "password": "Password",
           "premise": "Premise ID (e.g. 106180)",
           "partner": "Partner ID (e.g. 6050184)",
+          "nt_price": "Normal tariff price (CHF/kWh)",
+          "ht_price": "High tariff price (CHF/kWh)",
           "stat_id_discriminator": "Statistics discriminator (optional, defaults to premise)"
         },
         "description": "Enter your Groupe-E credentials and the IDs found in your portal."

@@ -8,6 +8,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CURRENCY, DOMAIN, ENERGY_PRICE_UNIT
@@ -41,6 +42,23 @@ class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_available = True
 
+    async def _fetch_and_update(self) -> None:
+        """Fetch the latest sum from the recorder and update state."""
+        instance = get_instance(self.hass)
+        stats = await instance.async_add_executor_job(
+            get_last_statistics, self.hass, 1, self._statistic_id, True, {"sum"}
+        )
+        if stats and self._statistic_id in stats:
+            self._attr_native_value = stats[self._statistic_id][0].get("sum")
+        else:
+            self._attr_native_value = None
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update sensor when coordinator refreshes."""
+        self.hass.async_create_task(self._fetch_and_update())
+
     async def async_update(self):
         """Fetch the latest sum from the recorder."""
         instance = get_instance(self.hass)
@@ -66,6 +84,23 @@ class GroupeECostSensor(CoordinatorEntity, SensorEntity):
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_unit_of_measurement = CURRENCY
         self._attr_available = True
+
+    async def _fetch_and_update(self) -> None:
+        """Fetch the latest sum from the recorder and update state."""
+        instance = get_instance(self.hass)
+        stats = await instance.async_add_executor_job(
+            get_last_statistics, self.hass, 1, self._statistic_id, True, {"sum"}
+        )
+        if stats and self._statistic_id in stats:
+            self._attr_native_value = stats[self._statistic_id][0].get("sum")
+        else:
+            self._attr_native_value = None
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update sensor when coordinator refreshes."""
+        self.hass.async_create_task(self._fetch_and_update())
 
     async def async_update(self):
         """Fetch the latest sum from the recorder."""
