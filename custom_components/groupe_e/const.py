@@ -20,7 +20,11 @@ CONF_PARTNER = "partner"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STAT_ID_DISCRIMINATOR = "stat_id_discriminator"
 CONF_TARIFF_SCHEDULE = "tariff_schedule"
+CONF_NT_PRICE = "nt_price"
+CONF_HT_PRICE = "ht_price"
 
-DEFAULT_UPDATE_INTERVAL = 60  # minutes
+DEFAULT_UPDATE_INTERVAL = 12  # hours
 DEFAULT_TARIFF_SCHEDULE = [{"start": 7, "end": 12}, {"start": 17, "end": 23}]
 TARIFF_TIMEZONE = "Europe/Zurich"
+
+CURRENCY = "CHF"

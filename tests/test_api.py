@@ -1,5 +1,6 @@
 """Tests for the Groupe-E API client using pytest-homeassistant-custom-component."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -8,10 +9,9 @@ from aiohttp import ClientSession
 
 from custom_components.groupe_e.api import (
     GroupeEAPI,
-    GroupeEAuthError,
     GroupeEApiError,
+    GroupeEAuthError,
 )
-from datetime import datetime, timezone
 
 
 @pytest.fixture

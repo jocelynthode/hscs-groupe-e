@@ -25,7 +25,9 @@
       "init": {
         "title": "Groupe-E Settings",
         "data": {
-          "update_interval": "Update Interval (minutes)",
+          "nt_price": "Normal tariff price (CHF/kWh)",
+          "ht_price": "High tariff price (CHF/kWh)",
+          "update_interval": "Update Interval (hours)",
           "tariff_schedule": "High tariff periods in Swiss time (e.g. 07:00-12:00,17:00-23:00), defaults to 07-12, 17-23 if empty"
         }
       }

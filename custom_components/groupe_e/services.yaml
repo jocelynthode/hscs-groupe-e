@@ -1,0 +1,11 @@
+reset_statistics:
+  name: Reset statistics
+  description: Delete all Groupe-E external statistics for a config entry and re-fetch from the API.
+  fields:
+    entry_id:
+      name: Config entry
+      description: The Groupe-E config entry whose statistics should be deleted.
+      required: true
+      selector:
+        config_entry:
+          integration: groupe_e

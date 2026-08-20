@@ -1,19 +1,20 @@
 # Groupe-E Energy for Home Assistant
 
-This Home Assistant integration **does not create entities**. It fetches quarter-hourly consumption data from Groupe-E (Switzerland) and inserts it directly into Home Assistant's long-term statistics for use by the **Energy Dashboard**.
+This Home Assistant integration fetches quarter-hourly consumption data from Groupe-E (Switzerland), splits it by tariff (Normal/High), calculates the historical energy cost, and inserts everything directly into Home Assistant's long-term statistics for use by the **Energy Dashboard** — no YAML, no template sensors, no automations required.
 
 > **Note:** Groupe-E data has a 1-day lag: today's consumption is only available tomorrow. The integration handles this transparently by always requesting from the last known point.
 
 ## Features
 
 - **Direct Login**: Secure login using your official Groupe-E email and password.
-- **Energy Dashboard Ready**: Inserts 15-minute kWh data as two separate tariff statistics (Normal Tariff / High Tariff), each configurable with its own per-kWh price in the Energy Dashboard.
+- **Energy Dashboard Ready**: Inserts 15-minute kWh data as three energy statistics (Normal Tariff, High Tariff, Grid Total) plus a **cumulative cost statistic** — automatically calculated using your contract's NT/HT prices.
 - **Configurable Tariff Schedule**: Set your high-tariff periods (e.g. `07:00-12:00,17:00-23:00`) in the integration options. Defaults to Swiss standard hours.
+- **Configurable Pricing**: Enter your NT and HT prices (CHF/kWh) from your Groupe-E contract during setup.
+- **Automatic Cost Calculation**: At every data fetch, the integration calculates the historical cost per hour using the tariff that was active at that time — no need for a "current price" entity.
 - **Automatic Timezone Handling**: Tariff periods are evaluated in Swiss local time (`Europe/Zurich`), with correct DST transitions.
-- **Configurable Polling**: Adjust how often data is fetched (default: every 60 minutes).
-- **Historical Backfill**: On first run, fetches the last 365 days of data. Missing tariff stats trigger a full backfill.
-- **Overlapping fetch window**: Catches late API data corrections.
-- **Multi-meter support**: Each premise gets an isolated statistic ID; a custom discriminator can be set if needed.
+- **Configurable Polling**: Adjust how often data is fetched (default: every 12 hours).
+- **Historical Backfill**: On first run, fetches the last 365 days of data — calculates both energy and cost for all of it.
+- **Multi-meter support**: Each premise gets isolated statistic IDs; a custom discriminator can be set if needed.
 
 ## Installation
 
@@ -61,24 +62,51 @@ To obtain your specific IDs, you need to inspect the network traffic on the offi
 
 After configuration, go to **Settings** > **Devices & Services**, click the three-dot menu on the Groupe-E integration, and select **Configure**:
 
-| Setting                 | Description                                                                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update interval**     | How often to fetch new data (minimum 15 minutes, default 60).                                                                            |
+| Setting                 | Description                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **NT price**            | Your normal-tariff (bas tarif) price in CHF/kWh. Required.                                                                       |
+| **HT price**            | Your high-tariff (haut tarif) price in CHF/kWh. Required.                                                                        |
+| **Update interval**     | How often to fetch new data (minimum 1 hour, default 12 hours).                                                                  |
 | **High tariff periods** | Comma-separated time ranges in Swiss local time, e.g. `07:00-12:00,17:00-23:00`. Defaults to Swiss standard hours if left empty. |
+
+> Prices vary per contract and change annually. Update them via **Configure** when your tariff changes.
+
+## Sensors
+
+| Sensor                               | Description                                        | Unit    |
+| ------------------------------------ | -------------------------------------------------- | ------- |
+| `Groupe-E Normal Tariff Consumption` | Total kWh consumed during normal-tariff periods    | kWh     |
+| `Groupe-E High Tariff Consumption`   | Total kWh consumed during high-tariff periods      | kWh     |
+| `Groupe-E Grid Energy`               | Total kWh consumed (NT + HT)                       | kWh     |
+| `Groupe-E Energy Cost`               | Cumulative variable electricity cost               | CHF     |
+| `Groupe-E Electricity Price`         | Current active price per kWh (changes with tariff) | CHF/kWh |
 
 ## Usage in the Energy Dashboard
 
 After configuration, go to **Settings** > **Energy**:
 
 1. Under **Electricity consumption**, click **Add consumption**.
-2. Select the **Groupe-E Normal Tariff** statistic and enter the per-kWh price for normal-tariff electricity.
-3. Click **Add consumption** again and select the **Groupe-E High Tariff** statistic with its per-kWh price.
-4. The Energy Dashboard will display your consumption with the correct cost breakdown at full 15-minute granularity.
+2. Select the **Groupe-E Grid Energy** statistic.
+3. Under **Cost**, select the **Groupe-E Energy Cost** statistic.
+4. The Energy Dashboard will display your consumption with the correct cost breakdown, reflecting the correct NT/HT pricing for every historical data point.
+
+No template sensors, no automations, no per-tariff static prices to enter.
 
 ### Statistic IDs
 
 - `groupe_e:energy_consumption_<premise>_normal_tariff` (kWh during normal-tariff hours)
 - `groupe_e:energy_consumption_<premise>_high_tariff` (kWh during high-tariff hours)
+- `groupe_e:energy_consumption_<premise>_total` (total kWh)
+- `groupe_e:energy_consumption_<premise>_cost` (cumulative CHF)
+
+## How it works
+
+1. The integration fetches 15-minute consumption data from the Groupe-E API.
+2. It aggregates measurements into hourly kWh values.
+3. Each hour is classified as NT or HT based on the configured tariff schedule and Swiss local time.
+4. The hourly kWh is multiplied by the appropriate NT or HT price to calculate the cost.
+5. All four statistic series (NT, HT, total energy, total cost) are inserted as **external statistics** with historical timestamps.
+6. The Energy Dashboard uses these pre-calculated statistics — it never needs to know what tariff was active at any historical time.
 
 ## Security and Privacy
 

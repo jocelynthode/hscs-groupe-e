@@ -25,8 +25,10 @@
       "init": {
         "title": "Paramètres Groupe-E",
         "data": {
-          "update_interval": "Intervalle de mise à jour (minutes)",
-          "tariff_schedule": "Périodes haut tarif en heure suisse (ex. 07:00-12:00,17:00-23:00), valeurs par défaut 07-12, 17-23 si vide"
+          "nt_price": "Prix bas tarif (CHF/kWh)",
+          "ht_price": "Prix haut tarif (CHF/kWh)",
+          "update_interval": "Intervalle de mise a jour (heures)",
+          "tariff_schedule": "Periodes haut tarif en heure suisse (ex. 07:00-12:00,17:00-23:00), valeurs par defaut 07-12, 17-23 si vide"
         }
       }
     }

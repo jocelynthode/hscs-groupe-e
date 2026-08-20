@@ -2,17 +2,20 @@
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
+
 from .const import (
-    DOMAIN,
-    CONF_PREMISE,
+    CONF_HT_PRICE,
+    CONF_NT_PRICE,
     CONF_PARTNER,
-    CONF_UPDATE_INTERVAL,
+    CONF_PREMISE,
     CONF_STAT_ID_DISCRIMINATOR,
     CONF_TARIFF_SCHEDULE,
-    DEFAULT_UPDATE_INTERVAL,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_TARIFF_SCHEDULE,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
 )
 
 
@@ -93,7 +96,6 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 class ConfigFlow(GroupeEFlowHandler):
     """HA entrypoint wrapper for the flow handler."""
 
-    pass
 
 
 class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):
@@ -140,12 +142,24 @@ class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Required(
+                        CONF_NT_PRICE,
+                        default=self.config_entry.options.get(
+                            CONF_NT_PRICE,
+                        ),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                    vol.Required(
+                        CONF_HT_PRICE,
+                        default=self.config_entry.options.get(
+                            CONF_HT_PRICE,
+                        ),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0)),
                     vol.Optional(
                         CONF_UPDATE_INTERVAL,
                         default=self.config_entry.options.get(
                             CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
                         ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=15)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1)),
                     vol.Optional(
                         CONF_TARIFF_SCHEDULE,
                         default=current,

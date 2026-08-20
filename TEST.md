@@ -50,16 +50,19 @@ from aiohttp import ClientSession
 from datetime import datetime, timedelta
 from custom_components.groupe_e.api import GroupeEAPI
 
+
 async def test_api():
     async with ClientSession() as session:
         api = GroupeEAPI(session, "your@email.com", "your_password")
         data = await api.get_smartmeter_data(
-            "106180", "6050184",
+            "106180",
+            "6050184",
             datetime.now() - timedelta(days=2),
             datetime.now(),
             resolution="quarter-hourly",
         )
         print(data)
+
 
 asyncio.run(test_api())
 ```

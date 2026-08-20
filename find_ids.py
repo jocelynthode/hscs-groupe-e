@@ -1,6 +1,6 @@
-import requests
-import json
 import getpass
+
+import requests
 
 
 def get_groupe_e_ids():
@@ -55,7 +55,7 @@ def get_groupe_e_ids():
                 "Could not retrieve user info. Please use the manual method in README.md."
             )
 
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"An error occurred: {e}")
 
 

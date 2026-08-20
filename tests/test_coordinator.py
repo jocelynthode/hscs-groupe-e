@@ -3,12 +3,10 @@
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from custom_components.groupe_e.coordinator import (
+    _is_high_tariff,
     _parse_timestamp_ms,
     _safe_float,
-    _is_high_tariff,
     measurements_to_statistics_by_tariff,
 )
 
@@ -127,16 +125,24 @@ class TestIsHighTariff:
 
 class TestMeasurementsToStatisticsByTariff:
     def test_empty_measurements(self):
-        nt, ht = measurements_to_statistics_by_tariff([], None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, cost = measurements_to_statistics_by_tariff(
+            [], None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert nt == []
         assert ht == []
+        assert total == []
+        assert cost == []
 
     def test_single_hour_nt(self):
         ts = datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc)
         measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
-        nt, ht = measurements_to_statistics_by_tariff(measurements, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, cost = measurements_to_statistics_by_tariff(
+            measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert len(nt) == 1
         assert len(ht) == 1
+        assert len(total) == 1
+        assert len(cost) == 1
         expected_hour = ts.replace(minute=0, second=0, microsecond=0)
         assert nt[0]["start"] == expected_hour
         assert nt[0]["state"] == 1.0
@@ -144,11 +150,17 @@ class TestMeasurementsToStatisticsByTariff:
         assert ht[0]["start"] == expected_hour
         assert ht[0]["state"] == 0.0
         assert ht[0]["sum"] == 0.0
+        assert total[0]["state"] == 1.0
+        assert total[0]["sum"] == 1.0
+        assert cost[0]["state"] == 0.2
+        assert cost[0]["sum"] == 0.2
 
     def test_single_hour_ht(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
         measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
-        nt, ht = measurements_to_statistics_by_tariff(measurements, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, cost = measurements_to_statistics_by_tariff(
+            measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert len(nt) == 1
         assert len(ht) == 1
         expected_hour = ts.replace(minute=0, second=0, microsecond=0)
@@ -158,6 +170,9 @@ class TestMeasurementsToStatisticsByTariff:
         assert nt[0]["start"] == expected_hour
         assert nt[0]["state"] == 0.0
         assert nt[0]["sum"] == 0.0
+        assert total[0]["state"] == 1.0
+        assert cost[0]["state"] == 0.3
+        assert cost[0]["sum"] == 0.3
 
     def test_four_qh_sum_to_hour(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
@@ -168,35 +183,74 @@ class TestMeasurementsToStatisticsByTariff:
             {"timestamp": hour_start_ts + 1800000, "value": 1.0},
             {"timestamp": hour_start_ts + 2700000, "value": 4.0},
         ]
-        nt, ht = measurements_to_statistics_by_tariff(measurements, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, _ = measurements_to_statistics_by_tariff(
+            measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert len(nt) == 1
         assert len(ht) == 1
         total_kwh = (2.0 + 3.0 + 1.0 + 4.0) * 0.25
         assert ht[0]["state"] == total_kwh
         assert nt[0]["state"] == 0.0
+        assert total[0]["state"] == total_kwh
 
     def test_mixed_hours_independent_tariffs(self):
         measures = [
-            {"timestamp": int(datetime(2026, 8, 19, 3, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
-            {"timestamp": int(datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
-            {"timestamp": int(datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
-            {"timestamp": int(datetime(2026, 8, 19, 16, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 3, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 16, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
         ]
-        nt, ht = measurements_to_statistics_by_tariff(measures, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, cost = measurements_to_statistics_by_tariff(
+            measures, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert len(nt) == 4
         assert len(ht) == 4
+        assert len(total) == 4
+        assert len(cost) == 4
         assert nt[0]["state"] == 1.0
         assert nt[0]["sum"] == 1.0
         assert ht[0]["state"] == 0.0
         assert ht[0]["sum"] == 0.0
+        assert total[0]["state"] == 1.0
+        assert total[0]["sum"] == 1.0
+        assert cost[0]["state"] == 0.2
+        assert cost[0]["sum"] == 0.2
         assert nt[1]["state"] == 0.0
         assert nt[1]["sum"] == 1.0
         assert ht[1]["state"] == 1.0
         assert ht[1]["sum"] == 1.0
+        assert total[1]["state"] == 1.0
+        assert total[1]["sum"] == 2.0
+        assert cost[1]["state"] == 0.3
+        assert cost[1]["sum"] == 0.5
         assert nt[2]["state"] == 1.0
         assert nt[2]["sum"] == 2.0
         assert ht[2]["state"] == 0.0
         assert ht[2]["sum"] == 1.0
+        assert total[2]["state"] == 1.0
+        assert total[2]["sum"] == 3.0
+        assert cost[2]["state"] == 0.2
+        assert cost[2]["sum"] == 0.7
         assert nt[3]["state"] == 0.0
         assert nt[3]["sum"] == 2.0
         assert ht[3]["state"] == 1.0
@@ -205,50 +259,106 @@ class TestMeasurementsToStatisticsByTariff:
     def test_cumulative_from_existing_sums(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
         measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
-        nt, ht = measurements_to_statistics_by_tariff(measurements, None, 10.0, 20.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, cost = measurements_to_statistics_by_tariff(
+            measurements,
+            None,
+            10.0,
+            20.0,
+            30.0,
+            40.0,
+            DEFAULT_HT_PERIODS,
+            ZURICH,
+            0.2,
+            0.3,
+        )
         assert len(nt) == 1
         assert len(ht) == 1
         assert nt[0]["state"] == 0.0
         assert nt[0]["sum"] == 10.0
         assert ht[0]["state"] == 1.0
         assert ht[0]["sum"] == 21.0
+        assert total[0]["state"] == 1.0
+        assert total[0]["sum"] == 31.0
+        assert cost[0]["state"] == 0.3
+        assert cost[0]["sum"] == 40.3
 
     def test_single_cutoff_skips_before(self):
         cutoff = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp()
         measures = [
-            {"timestamp": int(datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
-            {"timestamp": int(datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
         ]
-        nt, ht = measurements_to_statistics_by_tariff(measures, cutoff, 5.0, 5.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, total, _cost = measurements_to_statistics_by_tariff(
+            measures, cutoff, 5.0, 5.0, 10.0, 1.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert len(nt) == 1
         assert len(ht) == 1
         assert nt[0]["state"] == 1.0
         assert nt[0]["sum"] == 6.0
         assert ht[0]["state"] == 0.0
+        assert total[0]["state"] == 1.0
+        assert total[0]["sum"] == 11.0
 
     def test_unsorted_aggregated_by_hour(self):
         measures = [
-            {"timestamp": int(datetime(2026, 8, 19, 17, 0, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
-            {"timestamp": int(datetime(2026, 8, 19, 16, 45, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
-            {"timestamp": int(datetime(2026, 8, 19, 17, 15, tzinfo=timezone.utc).timestamp() * 1000), "value": 4.0},
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 17, 0, tzinfo=timezone.utc).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 16, 45, tzinfo=timezone.utc).timestamp()
+                    * 1000
+                ),
+                "value": 4.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(2026, 8, 19, 17, 15, tzinfo=timezone.utc).timestamp()
+                    * 1000
+                ),
+                "value": 4.0,
+            },
         ]
-        nt, ht = measurements_to_statistics_by_tariff(measures, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
-        # 16:45 → hour 16, 17:00+17:15 → hour 17
+        nt, ht, total, _cost = measurements_to_statistics_by_tariff(
+            measures, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert len(nt) == 2
         assert len(ht) == 2
-        # hour 16: all HT (CEST 18:00-18:59 → HT)
+        assert len(total) == 2
         assert ht[0]["state"] == 1.0
         assert nt[0]["state"] == 0.0
-        # hour 17: both in HT (CEST 19:00-19:59 → HT)
+        assert total[0]["state"] == 1.0
         assert ht[1]["state"] == 2.0
         assert ht[1]["sum"] == 3.0
         assert nt[1]["state"] == 0.0
+        assert total[1]["state"] == 2.0
 
     def test_tariff_uses_local_timezone(self):
         ts = int(datetime(2026, 8, 19, 15, 0, tzinfo=timezone.utc).timestamp() * 1000)
-        nt, ht = measurements_to_statistics_by_tariff(
+        nt, ht, _total, _cost = measurements_to_statistics_by_tariff(
             [{"timestamp": ts, "value": 4.0}],
-            None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+            None,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            DEFAULT_HT_PERIODS,
+            ZURICH,
+            0.2,
+            0.3,
         )
         assert len(nt) == 1
         assert len(ht) == 1
@@ -257,57 +367,80 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_summer_time_tariff(self):
         ts = int(datetime(2026, 8, 19, 15, 0, tzinfo=timezone.utc).timestamp() * 1000)
-        _, ht = measurements_to_statistics_by_tariff(
+        _, ht, _, _ = measurements_to_statistics_by_tariff(
             [{"timestamp": ts, "value": 4.0}],
-            None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+            None,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            DEFAULT_HT_PERIODS,
+            ZURICH,
+            0.2,
+            0.3,
         )
         assert ht[0]["state"] == 1.0
 
     def test_winter_time_tariff(self):
         ts = int(datetime(2026, 1, 15, 16, 0, tzinfo=timezone.utc).timestamp() * 1000)
-        _, ht = measurements_to_statistics_by_tariff(
+        _, ht, _, _ = measurements_to_statistics_by_tariff(
             [{"timestamp": ts, "value": 4.0}],
-            None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+            None,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            DEFAULT_HT_PERIODS,
+            ZURICH,
+            0.2,
+            0.3,
         )
         assert ht[0]["state"] == 1.0
 
     def test_timestamps_at_top_of_hour(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
         measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
-        nt, ht = measurements_to_statistics_by_tariff(measurements, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
+        nt, ht, _total, _cost = measurements_to_statistics_by_tariff(
+            measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
+        )
         assert nt[0]["start"].minute == 0
         assert nt[0]["start"].second == 0
         assert ht[0]["start"].minute == 0
         assert ht[0]["start"].second == 0
 
     def test_cutoff_skips_equal_timestamp(self):
-        cutoff = datetime(
-            2026, 8, 19, 12, 0, tzinfo=timezone.utc
-        ).timestamp()
+        cutoff = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp()
         measures = [
             {
                 "timestamp": int(
-                    datetime(
-                        2026, 8, 19, 12, 0, tzinfo=timezone.utc
-                    ).timestamp() * 1000
+                    datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp() * 1000
                 ),
                 "value": 2.0,
             },
             {
                 "timestamp": int(
-                    datetime(
-                        2026, 8, 19, 12, 15, tzinfo=timezone.utc
-                    ).timestamp() * 1000
+                    datetime(2026, 8, 19, 12, 15, tzinfo=timezone.utc).timestamp()
+                    * 1000
                 ),
                 "value": 4.0,
             },
         ]
-        nt, ht = measurements_to_statistics_by_tariff(
-            measures, cutoff, 5.0, 5.0, DEFAULT_HT_PERIODS, ZURICH,
+        nt, ht, total, _cost = measurements_to_statistics_by_tariff(
+            measures,
+            cutoff,
+            5.0,
+            5.0,
+            10.0,
+            2.0,
+            DEFAULT_HT_PERIODS,
+            ZURICH,
+            0.2,
+            0.3,
         )
         assert len(nt) == 1
         assert len(ht) == 1
         assert nt[0]["sum"] == 6.0
+        assert total[0]["sum"] == 11.0
 
     def test_invalid_measurements_are_skipped(self):
         measures = [
@@ -316,16 +449,24 @@ class TestMeasurementsToStatisticsByTariff:
             {"timestamp": 1234567890000, "value": True},
             {
                 "timestamp": int(
-                    datetime(
-                        2026, 8, 19, 10, 0, tzinfo=timezone.utc
-                    ).timestamp() * 1000
+                    datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc).timestamp() * 1000
                 ),
                 "value": 4.0,
             },
         ]
-        nt, ht = measurements_to_statistics_by_tariff(
-            measures, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+        nt, ht, total, _cost = measurements_to_statistics_by_tariff(
+            measures,
+            None,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            DEFAULT_HT_PERIODS,
+            ZURICH,
+            0.2,
+            0.3,
         )
         assert len(nt) == 1
         assert len(ht) == 1
         assert nt[0]["state"] == 1.0
+        assert total[0]["state"] == 1.0
