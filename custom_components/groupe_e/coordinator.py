@@ -181,7 +181,11 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         update_interval: int,
         config_entry,
     ):
-        """Initialize the coordinator with API client and premise details."""
+        """Initialize the coordinator with API client and premise details.
+
+        Sets up statistic IDs, in-memory latest sums for sensors,
+        and the rebuild_since trigger for partial/full data resets.
+        """
         super().__init__(
             hass,
             _LOGGER,
@@ -302,7 +306,13 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Fetch smart meter data and insert statistics for quarter-hourly consumption and tariff split."""
+        """Fetch smart meter data and insert statistics for quarter-hourly consumption and tariff split.
+
+        Three code paths:
+        1. rebuild_since=datetime.min — full clear: wipe all, fetch from year start.
+        2. rebuild_since=<date> — partial rebuild: preserve pre-date stats, recalculate from date.
+        3. No rebuild — normal incremental: fetch from the last stored statistic timestamp.
+        """
         try:
             local_tz = ZoneInfo(TARIFF_TIMEZONE)
             now_local = datetime.now(local_tz)

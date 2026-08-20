@@ -69,7 +69,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Groupe-E integration."""
 
     async def _handle_reset_statistics(call: ServiceCall) -> None:
-        """Handle the reset_statistics service call."""
+        """Handle the reset_statistics service call.
+
+        Supports three modes:
+        - No args: preserve nothing before Jan 1 of current year, rebuild from there.
+        - rebuild_since=<date>: preserve data before that date, recalculate from there.
+        - clear_all=True: wipe everything, rebuild from Jan 1 of current year.
+        """
         entry_id = call.data["entry_id"]
 
         coordinator: GroupeEDataUpdateCoordinator | None = hass.data[DOMAIN].get(

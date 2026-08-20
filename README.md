@@ -13,7 +13,7 @@ This Home Assistant integration fetches quarter-hourly consumption data from Gro
 - **Automatic Cost Calculation**: At every data fetch, the integration calculates the historical cost per hour using the tariff that was active at that time — no need for a "current price" entity.
 - **Automatic Timezone Handling**: Tariff periods are evaluated in Swiss local time (`Europe/Zurich`), with correct DST transitions.
 - **Configurable Polling**: Adjust how often data is fetched (default: every 12 hours).
-- **Historical Backfill**: On first run, fetches the last 365 days of data — calculates both energy and cost for all of it.
+- **Historical Backfill**: On first run, fetches data from January 1st of the current year — calculates both energy and cost for all of it.
 - **Multi-meter support**: Each premise gets isolated statistic IDs; a custom discriminator can be set if needed.
 
 ## Installation
@@ -98,6 +98,29 @@ No template sensors, no automations, no per-tariff static prices to enter.
 - `groupe_e:energy_consumption_<premise>_high_tariff` (kWh during high-tariff hours)
 - `groupe_e:energy_consumption_<premise>_total` (total kWh)
 - `groupe_e:energy_consumption_<premise>_cost` (cumulative CHF)
+
+## Services
+
+### `groupe_e.reset_statistics`
+
+Delete all Groupe-E statistics and re-fetch from the API.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entry_id` | string (required) | The Groupe-E config entry to reset |
+| `rebuild_since` | date (optional) | ISO date (e.g. `2026-01-01`). Clears and rebuilds from this date onward, preserving data before it |
+| `clear_all` | boolean (optional) | If `true`, deletes ALL statistics and rebuilds from Jan 1 of current year. Overrides `rebuild_since` |
+
+If neither field is provided, preserves nothing before Jan 1 of the current year and rebuilds from that date.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| Sensors show "unknown" after startup | First refresh failed (e.g. HTTP 500) | Check logs. The integration will retry on next poll interval. |
+| Sensors show "This entity is no longer being provided" | `async_setup_entry` failed | Restart HA. The integration now tolerates first-refresh failures. |
+| No data in Energy Dashboard after reset | Statistics need time to commit | Wait a few minutes, or trigger a manual refresh via the service. |
+| Wrong cost in Energy Dashboard | Prices changed but data was inserted with old prices | Use `groupe_e.reset_statistics` with `rebuild_since` set to the date the prices changed. |
 
 ## How it works
 
