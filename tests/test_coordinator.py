@@ -132,10 +132,15 @@ class TestMeasurementsToStatisticsByTariff:
         assert ht == []
 
     def test_nt_measurement(self):
-        measurements = [{"timestamp": 1705321800000, "value": 4.0}]
+        # 12:30 UTC = 13:30 Europe/Zurich in January → NT (between HT periods)
+        ts = int(
+            datetime(2024, 1, 15, 12, 30, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        measurements = [{"timestamp": ts, "value": 4.0}]
         nt, ht = measurements_to_statistics_by_tariff(measurements, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
         assert len(nt) == 1
         assert len(ht) == 1
+        assert [x["start"] for x in nt] == [x["start"] for x in ht]
         assert nt[0]["state"] == 1.0
         assert nt[0]["sum"] == 1.0
         assert ht[0]["state"] == 0.0
@@ -163,6 +168,7 @@ class TestMeasurementsToStatisticsByTariff:
         nt, ht = measurements_to_statistics_by_tariff(measures, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH)
         assert len(nt) == 5
         assert len(ht) == 5
+        assert [x["start"] for x in nt] == [x["start"] for x in ht]
         assert nt[0]["state"] == 0.25
         assert nt[0]["sum"] == 0.25
         assert ht[0]["state"] == 0.0
@@ -224,3 +230,89 @@ class TestMeasurementsToStatisticsByTariff:
         assert ht[1]["sum"] == 1.50
         assert ht[2]["state"] == 0.75
         assert ht[2]["sum"] == 2.25
+
+    def test_tariff_uses_local_timezone(self):
+        # 15:00 UTC = 17:00 Europe/Zurich in summer → HT
+        ts = int(
+            datetime(2026, 8, 19, 15, 0, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        nt, ht = measurements_to_statistics_by_tariff(
+            [{"timestamp": ts, "value": 4.0}],
+            None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+        )
+        assert len(nt) == 1
+        assert len(ht) == 1
+        assert nt[0]["state"] == 0.0
+        assert ht[0]["state"] == 1.0
+
+    def test_summer_time_tariff(self):
+        # 15:00 UTC = 17:00 CEST (summer) → HT
+        ts = int(
+            datetime(2026, 8, 19, 15, 0, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        _, ht = measurements_to_statistics_by_tariff(
+            [{"timestamp": ts, "value": 4.0}],
+            None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+        )
+        assert ht[0]["state"] == 1.0
+
+    def test_winter_time_tariff(self):
+        # 16:00 UTC = 17:00 CET (winter) → HT
+        ts = int(
+            datetime(2026, 1, 15, 16, 0, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        _, ht = measurements_to_statistics_by_tariff(
+            [{"timestamp": ts, "value": 4.0}],
+            None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+        )
+        assert ht[0]["state"] == 1.0
+
+    def test_cutoff_skips_equal_timestamp(self):
+        cutoff = datetime(
+            2026, 8, 19, 12, 0, tzinfo=timezone.utc
+        ).timestamp()
+        measures = [
+            {
+                "timestamp": int(
+                    datetime(
+                        2026, 8, 19, 12, 0, tzinfo=timezone.utc
+                    ).timestamp() * 1000
+                ),
+                "value": 2.0,
+            },
+            {
+                "timestamp": int(
+                    datetime(
+                        2026, 8, 19, 12, 15, tzinfo=timezone.utc
+                    ).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+        ]
+        nt, ht = measurements_to_statistics_by_tariff(
+            measures, cutoff, 5.0, 5.0, DEFAULT_HT_PERIODS, ZURICH,
+        )
+        assert len(nt) == 1
+        assert len(ht) == 1
+        assert nt[0]["sum"] == 6.0
+
+    def test_invalid_measurements_are_skipped(self):
+        measures = [
+            {"timestamp": "invalid", "value": 4.0},
+            {"timestamp": 1234567890000, "value": "abc"},
+            {"timestamp": 1234567890000, "value": True},
+            {
+                "timestamp": int(
+                    datetime(
+                        2026, 8, 19, 10, 0, tzinfo=timezone.utc
+                    ).timestamp() * 1000
+                ),
+                "value": 4.0,
+            },
+        ]
+        nt, ht = measurements_to_statistics_by_tariff(
+            measures, None, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH,
+        )
+        assert len(nt) == 1
+        assert len(ht) == 1
+        assert nt[0]["state"] == 1.0
