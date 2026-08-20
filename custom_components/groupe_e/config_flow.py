@@ -51,6 +51,8 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PASSWORD): str,
                     vol.Required(CONF_PREMISE): str,
                     vol.Required(CONF_PARTNER): str,
+                    vol.Required(CONF_NT_PRICE): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                    vol.Required(CONF_HT_PRICE): vol.All(vol.Coerce(float), vol.Range(min=0)),
                     vol.Optional(CONF_STAT_ID_DISCRIMINATOR): str,
                 }
             ),
@@ -146,12 +148,14 @@ class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):
                         CONF_NT_PRICE,
                         default=self.config_entry.options.get(
                             CONF_NT_PRICE,
+                            self.config_entry.data.get(CONF_NT_PRICE, ""),
                         ),
                     ): vol.All(vol.Coerce(float), vol.Range(min=0)),
                     vol.Required(
                         CONF_HT_PRICE,
                         default=self.config_entry.options.get(
                             CONF_HT_PRICE,
+                            self.config_entry.data.get(CONF_HT_PRICE, ""),
                         ),
                     ): vol.All(vol.Coerce(float), vol.Range(min=0)),
                     vol.Optional(

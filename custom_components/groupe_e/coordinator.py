@@ -263,10 +263,12 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         return schedule
 
     def _get_prices(self) -> dict[str, float]:
-        """Get the NT and HT prices from config options."""
+        """Get the NT and HT prices from config options or data."""
+        nt = self._config_entry.options.get(CONF_NT_PRICE) or self._config_entry.data.get(CONF_NT_PRICE, 0)
+        ht = self._config_entry.options.get(CONF_HT_PRICE) or self._config_entry.data.get(CONF_HT_PRICE, 0)
         return {
-            "nt": float(self._config_entry.options.get(CONF_NT_PRICE, 0)),
-            "ht": float(self._config_entry.options.get(CONF_HT_PRICE, 0)),
+            "nt": float(nt),
+            "ht": float(ht),
         }
 
     async def _async_update_data(self):
