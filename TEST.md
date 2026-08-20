@@ -1,64 +1,31 @@
 # Testing the Groupe-E Integration
 
-This document explains how to test the integration to ensure it is working correctly.
+## 1. Automated Tests
 
-## 1. Local Testing with a Sandbox/Dev Instance
-
-To test this integration, you should have a Home Assistant development environment or a separate "test" instance.
-
-### Step-by-Step Testing
-
-1. **Deploy to custom_components**:
-   Copy the `custom_components/groupe_e` directory to your Home Assistant `config/custom_components` folder.
-2. **Check Logs**:
-   Restart Home Assistant and monitor the logs (`home-assistant.log`). You should see no errors related to the `groupe_e` component during startup.
-3. **Verify OAuth2 Flow**:
-   Go to **Settings** > **Devices & Services** > **Add Integration**. Search for "Groupe-E Energy".
-   - Ensure the external login page (Keycloak) opens correctly.
-   - Verify that after signing in, you are redirected back to Home Assistant and the "Success" message appears.
-4. **Sensor Verification**:
-   - Go to **Developer Tools** > **States**.
-   - Search for `sensor.groupe_e_energy_consumption`.
-   - Check if the state (value in kWh) is being populated.
-5. **Energy Dashboard**:
-   - Go to **Settings** > **Dashboards** > **Energy**.
-   - Try to add the `Groupe-E Energy Consumption` sensor to the "Grid consumption" section. It should appear in the list.
-
-## 2. API Verification (Manual)
-
-If you want to verify if the API client is working correctly without the full HA setup, you can use a Python script with a temporary token (extracted from your browser during a manual session):
-
-```python
-import asyncio
-from aiohttp import ClientSession
-from datetime import datetime, timedelta
-from custom_components.groupe_e.api import GroupeEAPI
-
-async def test_api():
-    token = "YOUR_TEMP_TOKEN_HERE"
-    async with ClientSession() as session:
-        api = GroupeEAPI(session, token)
-
-        # Test User Info
-        user_info = await api.get_user_info()
-        print(f"User Info: {user_info}")
-
-        # Test Smart Meter Data
-        premise = "106180" # Replace with yours
-        partner = "6050184" # Replace with yours
-        end = datetime.now()
-        start = end - timedelta(days=1)
-
-        data = await api.get_smartmeter_data(premise, partner, start, end)
-        print(f"Smart Meter Data: {data}")
-
-if __name__ == "__main__":
-    asyncio.run(test_api())
+```bash
+pip install -r requirements_test.txt
+python -m pytest tests/ -v
 ```
+
+The test suite covers:
+
+- **API client**: login, token refresh, 401 retry, error handling
+- **`_safe_float`**: int, float, None, numeric strings, non-numeric strings, bools
+- **`_parse_timestamp_ms`**: valid ms timestamps, None, booleans, strings, missing keys
+- **`measurements_to_statistics`**: empty input, single measurement, cumulative sums, duplicate skipping, invalid values/timestamps, existing sum continuation
+
+These pure-function tests do not require HA fixtures or mocked recorder instances.
+
+## 2. Integration Testing
+
+1. **Deploy** the `custom_components/groupe_e` directory to your HA `config/custom_components`.
+2. **Add the integration** via **Settings** > **Devices & Services** > **Add Integration** > **Groupe-E Energy**.
+3. **Check logs** at `custom_components.groupe_e: debug` for fetch and statistics-insertion messages.
+4. **Verify statistics**: Go to **Settings** > **Energy** and add the **Groupe-E Energy Consumption** source. The dashboard should show quarter-hourly data.
 
 ## 3. Debugging
 
-To get more information about what the integration is doing, add the following to your `configuration.yaml`:
+Add to `configuration.yaml`:
 
 ```yaml
 logger:
@@ -67,15 +34,32 @@ logger:
     custom_components.groupe_e: debug
 ```
 
-Check the logs for:
+Look for:
 
-- "Fetching smartmeter data" messages.
-- JSON responses from the API (be careful, as these might contain PII).
-- Any `UpdateFailed` errors.
+- `"Updating sensor data"` / `"Adding N statistics entries"`, confirms data was fetched and inserted.
+- `"Skipping measurement with invalid ..."`, API returned a bad value.
+- `UpdateFailed` errors, credential or API issues.
 
-## 4. Run Tests
+## 4. API Verification
 
-```bash
-pip install -r requirements_test.txt
-python -m pytest tests/ -v
+To test the API client independently:
+
+```python
+import asyncio
+from aiohttp import ClientSession
+from datetime import datetime, timedelta
+from custom_components.groupe_e.api import GroupeEAPI
+
+async def test_api():
+    async with ClientSession() as session:
+        api = GroupeEAPI(session, "your@email.com", "your_password")
+        data = await api.get_smartmeter_data(
+            "106180", "6050184",
+            datetime.now() - timedelta(days=2),
+            datetime.now(),
+            resolution="quarter-hourly",
+        )
+        print(data)
+
+asyncio.run(test_api())
 ```

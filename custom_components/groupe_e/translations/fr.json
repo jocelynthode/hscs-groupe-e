@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à Groupe-E",
+        "data": {
+          "username": "Nom d'utilisateur",
+          "password": "Mot de passe",
+          "premise": "ID du site (p. ex. 106180)",
+          "partner": "ID partenaire (p. ex. 6050184)",
+          "stat_id_discriminator": "Discriminant des statistiques (optionnel, par défaut l'ID du site)"
+        },
+        "description": "Saisissez vos identifiants Groupe-E et les IDs trouvés dans votre portail."
+      }
+    },
+    "abort": {
+      "already_configured": "Cet appareil est déjà configuré",
+      "already_in_progress": "La configuration est déjà en cours",
+      "oauth_error": "Erreur OAuth générique",
+      "missing_configuration": "Le composant n'est pas configuré. Veuillez suivre la documentation."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Paramètres Groupe-E",
+        "data": {
+          "update_interval": "Intervalle de mise à jour (minutes)",
+          "tariff_schedule": "Périodes haut tarif en heure suisse (ex. 07:00-12:00,17:00-23:00), valeurs par défaut 07-12, 17-23 si vide"
+        }
+      }
+    }
+  }
+}

@@ -9,7 +9,10 @@ from .const import (
     CONF_PREMISE,
     CONF_PARTNER,
     CONF_UPDATE_INTERVAL,
+    CONF_STAT_ID_DISCRIMINATOR,
+    CONF_TARIFF_SCHEDULE,
     DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_TARIFF_SCHEDULE,
 )
 
 
@@ -45,6 +48,7 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PASSWORD): str,
                     vol.Required(CONF_PREMISE): str,
                     vol.Required(CONF_PARTNER): str,
+                    vol.Optional(CONF_STAT_ID_DISCRIMINATOR): str,
                 }
             ),
             errors=errors,
@@ -76,6 +80,10 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_PARTNER, default=entry.data.get(CONF_PARTNER)
                     ): str,
+                    vol.Optional(
+                        CONF_STAT_ID_DISCRIMINATOR,
+                        default=entry.data.get(CONF_STAT_ID_DISCRIMINATOR, ""),
+                    ): str,
                 }
             ),
             errors=errors,
@@ -94,7 +102,39 @@ class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            data = dict(user_input)
+            schedule_str = data.get(CONF_TARIFF_SCHEDULE, "").strip()
+            if schedule_str:
+                periods = []
+                for part in schedule_str.split(","):
+                    part = part.strip()
+                    if "-" in part:
+                        start_str, end_str = part.split("-", 1)
+                        try:
+                            start_h = int(start_str.split(":")[0])
+                            end_h = int(end_str.split(":")[0])
+                            if (
+                                0 <= start_h < 24
+                                and 0 < end_h <= 24
+                                and start_h < end_h
+                            ):
+                                periods.append({"start": start_h, "end": end_h})
+                        except (ValueError, IndexError):
+                            pass
+                data[CONF_TARIFF_SCHEDULE] = periods
+            else:
+                data.pop(CONF_TARIFF_SCHEDULE, None)
+            return self.async_create_entry(title="", data=data)
+
+        current = self.config_entry.options.get(
+            CONF_TARIFF_SCHEDULE, DEFAULT_TARIFF_SCHEDULE
+        )
+        if isinstance(current, list):
+            current = ",".join(
+                f"{p['start']:02d}:00-{p['end']:02d}:00" for p in current
+            )
+        else:
+            current = ""
 
         return self.async_show_form(
             step_id="init",
@@ -106,6 +146,10 @@ class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):
                             CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=15)),
+                    vol.Optional(
+                        CONF_TARIFF_SCHEDULE,
+                        default=current,
+                    ): str,
                 }
             ),
         )

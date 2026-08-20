@@ -1,14 +1,19 @@
 # Groupe-E Energy for Home Assistant
 
-This Home Assistant integration allows you to monitor your energy consumption from Groupe-E (Switzerland). It fetches data from the Groupe-E smart meter API and makes it available as energy sensors compatible with the Home Assistant Energy Dashboard.
+This Home Assistant integration **does not create entities**. It fetches quarter-hourly consumption data from Groupe-E (Switzerland) and inserts it directly into Home Assistant's long-term statistics for use by the **Energy Dashboard**.
+
+> **Note:** Groupe-E data has a 1-day lag: today's consumption is only available tomorrow. The integration handles this transparently by always requesting from the last known point.
 
 ## Features
 
 - **Direct Login**: Secure login using your official Groupe-E email and password.
-- **Energy Dashboard Ready**: Sensors are configured with `device_class: energy` and `state_class: total_increasing`.
-- **Daily & Monthly Sensors**: New sensors that specifically show today's and this month's consumption.
-- **Configurable Polling**: Adjust how often data is fetched from the API (default: every 60 minutes).
-- **Consumption Aggregation**: Automatically aggregates data into daily and monthly totals.
+- **Energy Dashboard Ready**: Inserts 15-minute kWh data as two separate tariff statistics (Normal Tariff / High Tariff), each configurable with its own per-kWh price in the Energy Dashboard.
+- **Configurable Tariff Schedule**: Set your high-tariff periods (e.g. `07:00-12:00,17:00-23:00`) in the integration options. Defaults to Swiss standard hours.
+- **Automatic Timezone Handling**: Tariff periods are evaluated in Swiss local time (`Europe/Zurich`), with correct DST transitions.
+- **Configurable Polling**: Adjust how often data is fetched (default: every 60 minutes).
+- **Historical Backfill**: On first run, fetches the last 365 days of data. Missing tariff stats trigger a full backfill.
+- **Overlapping fetch window**: Catches late API data corrections.
+- **Multi-meter support**: Each premise gets an isolated statistic ID; a custom discriminator can be set if needed.
 
 ## Installation
 
@@ -31,6 +36,7 @@ This Home Assistant integration allows you to monitor your energy consumption fr
    - **Password**: Your Groupe-E password.
    - **Premise ID**: Your location identifier (see below).
    - **Partner ID**: Your customer identifier (see below).
+   - **Statistics discriminator** (optional): A label for your meter (defaults to the premise ID). Useful if you have multiple premises, each gets its own statistics series (e.g. `groupe_e:energy_consumption_main_house`).
 
 ### How to find your Premise and Partner ID
 
@@ -51,11 +57,34 @@ To obtain your specific IDs, you need to inspect the network traffic on the offi
    ```
 7. Use these values in the Home Assistant setup form.
 
+## Options
+
+After configuration, go to **Settings** > **Devices & Services**, click the three-dot menu on the Groupe-E integration, and select **Configure**:
+
+| Setting                 | Description                                                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Update interval**     | How often to fetch new data (minimum 15 minutes, default 60).                                                                            |
+| **High tariff periods** | Comma-separated time ranges in Swiss local time, e.g. `07:00-12:00,17:00-23:00`. Defaults to Swiss standard hours if left empty. |
+
+## Usage in the Energy Dashboard
+
+After configuration, go to **Settings** > **Energy**:
+
+1. Under **Electricity consumption**, click **Add consumption**.
+2. Select the **Groupe-E Normal Tariff** statistic and enter the per-kWh price for normal-tariff electricity.
+3. Click **Add consumption** again and select the **Groupe-E High Tariff** statistic with its per-kWh price.
+4. The Energy Dashboard will display your consumption with the correct cost breakdown at full 15-minute granularity.
+
+### Statistic IDs
+
+- `groupe_e:energy_consumption_<premise>_normal_tariff` (kWh during normal-tariff hours)
+- `groupe_e:energy_consumption_<premise>_high_tariff` (kWh during high-tariff hours)
+
 ## Security and Privacy
 
 - **No Third-Party OAuth**: The integration communicates directly with Groupe-E's servers.
 - **Storage**: Your credentials and IDs are stored securely in Home Assistant's internal configuration.
-- **Logout/Login**: To update your password or IDs, you can either re-run the setup or delete and re-add the integration.
+- **Update credentials**: Go to **Settings** > **Devices & Services**, click the three-dot menu on the Groupe-E integration, and select **Reconfigure**, no need to delete and re-add.
 
 ## Support
 

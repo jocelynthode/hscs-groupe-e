@@ -1,40 +1,24 @@
-# Troubleshooting HACS Installation
+# Troubleshooting
 
-If the Groupe-E integration does not appear in Home Assistant after installing it via HACS, follow these steps to collect logs and find the cause.
+## Integration doesn't appear after HACS install
 
-## 1. Check if the files exist
+1. Check that the files exist at `/config/custom_components/groupe_e/`.
+2. Go to **Settings** > **System** > **Logs** and search for `groupe_e` or `custom_components`.
+3. Common causes:
+   - **Manifest error**: ensure HACS category was set to **Integration** (not Plugin/Theme).
+   - **HACS failed to download**: check HACS logs for `Validation failed` or `Could not download`.
 
-Open the **Terminal** or **File Editor** in Home Assistant and check if this folder exists:
-`/config/custom_components/groupe_e/`
+## No data in Energy Dashboard
 
-- **If it doesn't exist**: HACS failed to download the repository.
-- **If it exists but the integration doesn't show up**: There is an error in the code or manifest preventing Home Assistant from loading it.
+1. Add `custom_components.groupe_e: debug` to your logger config and restart.
+2. Check logs for:
+   - `"Adding N statistics entries"`, data was fetched and inserted.
+   - `"Skipping measurement with invalid ..."`, API returned bad data for some intervals.
+   - `UpdateFailed`, an error occurred during fetch.
+3. In **Settings** > **Energy**, click **Add Grid Consumption** and select **Groupe-E Energy Consumption**. If the source doesn't appear, no statistics have been recorded yet.
 
-## 2. Check Home Assistant Logs
+## Authentication errors
 
-1. Go to **Settings** > **System** > **Logs**.
-2. Click on **Home Assistant Core** (or "Load Full Logs").
-3. Use `Ctrl+F` (or `Cmd+F`) to search for:
-   - `groupe_e`
-   - `custom_components`
-   - `hacs`
-
-Look for errors like:
-
-- `Manifest file is invalid`
-- `Integration 'groupe_e' not found`
-- `Error loading custom_components.groupe_e`
-
-## 3. Check HACS Logs
-
-HACS writes its own logs into the main Home Assistant log.
-
-1. Go to **Settings** > **System** > **Logs**.
-2. Filter for `hacs`.
-3. Look for messages like `Validation of carnevlu/hscs-groupe-e failed` or `Could not download`.
-
-## 4. Common Fixes
-
-- **Manifest Error**: Ensure `manifest.json` is valid JSON (I have verified this).
-- **Missing Requirements**: Ensure your Home Assistant has internet access to download `aiohttp` (it usually does).
-- **HACS Category**: When adding the Custom Repository, ensure you select **Integration** as the category. If you selected "Plugin" or "Theme", it won't work.
+- **Wrong credentials**: use **Reconfigure** (three-dot menu on the integration) to update username/password.
+- **Persistent 401**: your account may have been locked or the portal password changed. Verify you can log in at [my.groupe-e.ch](https://my.groupe-e.ch).
+- **Login rate limit**: the API may temporarily block repeated failed login attempts. Wait a few minutes before retrying.

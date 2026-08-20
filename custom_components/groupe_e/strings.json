@@ -7,7 +7,8 @@
           "username": "Username",
           "password": "Password",
           "premise": "Premise ID",
-          "partner": "Partner ID"
+          "partner": "Partner ID",
+          "stat_id_discriminator": "Statistics discriminator (optional, defaults to premise)"
         }
       },
       "reconfigure": {
@@ -17,7 +18,8 @@
           "username": "Username",
           "password": "Password",
           "premise": "Premise ID",
-          "partner": "Partner ID"
+          "partner": "Partner ID",
+          "stat_id_discriminator": "Statistics discriminator (optional, defaults to premise)"
         }
       }
     },
@@ -31,7 +33,8 @@
       "init": {
         "title": "Groupe-E Options",
         "data": {
-          "update_interval": "Update interval (minutes, minimum 15)"
+          "update_interval": "Update interval (minutes, minimum 15)",
+          "tariff_schedule": "High tariff periods in Swiss time (e.g. 07:00-12:00,17:00-23:00), defaults to 07-12, 17-23 if empty"
         }
       }
     }

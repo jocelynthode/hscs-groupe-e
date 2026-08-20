@@ -30,6 +30,7 @@ class GroupeEAPI:
     REQUEST_TIMEOUT = 30
 
     def __init__(self, session: ClientSession, username: str, password: str):
+        """Initialize the API client with an aiohttp session and credentials."""
         self._session = session
         self._username = username
         self._password = password
@@ -38,11 +39,13 @@ class GroupeEAPI:
 
     @property
     def _token_expired(self) -> bool:
+        """Return True if the current token has expired or no token exists."""
         if self._token_expires_at is None:
             return True
         return datetime.now(timezone.utc) >= self._token_expires_at
 
     async def _async_login(self) -> None:
+        """Authenticate with Groupe-E and store the access token."""
         payload = {
             "grant_type": "password",
             "client_id": "portal",
@@ -88,6 +91,11 @@ class GroupeEAPI:
         end: datetime,
         resolution: str = "quarter-hourly",
     ) -> list[dict[str, Any]] | None:
+        """Fetch smart meter data from the Groupe-E API.
+
+        Automatically re-authenticates if the token is expired or on 401.
+        Returns a list of channel dicts or None.
+        """
         if not self._token or self._token_expired:
             await self._async_login()
 

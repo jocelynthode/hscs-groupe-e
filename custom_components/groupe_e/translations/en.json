@@ -1,32 +1,34 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Login to Groupe-E",
-                "data": {
-                    "username": "Username",
-                    "password": "Password",
-                    "premise": "Premise ID (e.g. 106180)",
-                    "partner": "Partner ID (e.g. 6050184)"
-                },
-                "description": "Enter your Groupe-E credentials and the IDs found in your portal."
-            }
+  "config": {
+    "step": {
+      "user": {
+        "title": "Login to Groupe-E",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "premise": "Premise ID (e.g. 106180)",
+          "partner": "Partner ID (e.g. 6050184)",
+          "stat_id_discriminator": "Statistics discriminator (optional, defaults to premise)"
         },
-        "abort": {
-            "already_configured": "Device is already configured",
-            "already_in_progress": "Configuration flow is already in progress",
-            "oauth_error": "Generic OAuth error",
-            "missing_configuration": "The component is not configured. Please follow the documentation."
-        }
+        "description": "Enter your Groupe-E credentials and the IDs found in your portal."
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Groupe-E Settings",
-                "data": {
-                    "update_interval": "Update Interval (minutes)"
-                }
-            }
-        }
+    "abort": {
+      "already_configured": "Device is already configured",
+      "already_in_progress": "Configuration flow is already in progress",
+      "oauth_error": "Generic OAuth error",
+      "missing_configuration": "The component is not configured. Please follow the documentation."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Groupe-E Settings",
+        "data": {
+          "update_interval": "Update Interval (minutes)",
+          "tariff_schedule": "High tariff periods in Swiss time (e.g. 07:00-12:00,17:00-23:00), defaults to 07-12, 17-23 if empty"
+        }
+      }
+    }
+  }
 }
