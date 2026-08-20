@@ -83,12 +83,14 @@ def measurements_to_statistics_by_tariff(
     ht_periods: list[dict],
     local_tz: ZoneInfo,
 ) -> tuple[list[StatisticData], list[StatisticData]]:
-    """Split API measurements into continuous NT and HT StatisticData lists.
+    """Aggregate quarter-hourly API measurements into hourly NT/HT StatisticData lists.
 
-    Every 15-min interval produces an entry in BOTH lists so both cumulative
-    series are gap-free. The inactive tariff gets state=0 and sum=previous_sum.
+    HA requires timestamps at the top of the hour. Each hour's 4 quarter-hourly
+    measurements are summed into a single kWh value, classified by tariff based
+    on local time at the hour boundary.
 
-    Measurements are sorted chronologically to ensure correct cumulative sums.
+    Every hour produces an entry in BOTH lists. The inactive tariff gets
+    state=0 and sum=previous_sum, keeping both cumulative series gap-free.
     """
     parsed = []
     for entry in measurements:
@@ -104,28 +106,36 @@ def measurements_to_statistics_by_tariff(
 
     parsed.sort(key=lambda x: x[0])
 
-    nt_statistics: list[StatisticData] = []
-    ht_statistics: list[StatisticData] = []
+    hours: dict[datetime, list[float]] = {}
     for start, value in parsed:
         if last_stats_time is not None and start.timestamp() <= last_stats_time:
             continue
+        hour_start = start.replace(minute=0, second=0, microsecond=0)
+        hours.setdefault(hour_start, []).append(value)
 
-        state = value * QUARTER_HOUR_HOURS
-        local_time = start.astimezone(local_tz)
+    nt_statistics: list[StatisticData] = []
+    ht_statistics: list[StatisticData] = []
+    for hour_start, values in sorted(hours.items()):
+        hourly_kwh = sum(v * QUARTER_HOUR_HOURS for v in values)
+        local_time = hour_start.astimezone(local_tz)
         is_ht = _is_high_tariff(local_time, ht_periods)
 
         if is_ht:
-            last_ht_sum += state
+            last_ht_sum += hourly_kwh
             ht_statistics.append(
-                StatisticData(start=start, state=state, sum=last_ht_sum)
+                StatisticData(start=hour_start, state=hourly_kwh, sum=last_ht_sum)
             )
-            nt_statistics.append(StatisticData(start=start, state=0.0, sum=last_nt_sum))
-        else:
-            last_nt_sum += state
             nt_statistics.append(
-                StatisticData(start=start, state=state, sum=last_nt_sum)
+                StatisticData(start=hour_start, state=0.0, sum=last_nt_sum)
             )
-            ht_statistics.append(StatisticData(start=start, state=0.0, sum=last_ht_sum))
+        else:
+            last_nt_sum += hourly_kwh
+            nt_statistics.append(
+                StatisticData(start=hour_start, state=hourly_kwh, sum=last_nt_sum)
+            )
+            ht_statistics.append(
+                StatisticData(start=hour_start, state=0.0, sum=last_ht_sum)
+            )
     return nt_statistics, ht_statistics
 
 
