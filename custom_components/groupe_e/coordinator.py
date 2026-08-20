@@ -99,7 +99,8 @@ def measurements_to_statistics_by_tariff(
     on local time at the hour boundary.
 
     Every hour produces an entry in ALL FOUR lists. The inactive tariff gets
-    state=0 and sum=previous_sum, keeping both cumulative series gap-free.
+    state=0 and sum=previous_sum, keeping both cumulative series gap-free
+    so the Energy Dashboard never sees a flat line or missing data.
     """
     parsed = []
     for entry in measurements:
@@ -137,6 +138,8 @@ def measurements_to_statistics_by_tariff(
             ht_statistics.append(
                 StatisticData(start=hour_start, state=hourly_kwh, sum=last_ht_sum)
             )
+            # Inactive tariff (NT) gets state=0 but sum stays at last_nt_sum
+            # to keep the cumulative series gap-free for the Energy Dashboard.
             nt_statistics.append(
                 StatisticData(start=hour_start, state=0.0, sum=last_nt_sum)
             )
@@ -146,6 +149,8 @@ def measurements_to_statistics_by_tariff(
             nt_statistics.append(
                 StatisticData(start=hour_start, state=hourly_kwh, sum=last_nt_sum)
             )
+            # Inactive tariff (HT) gets state=0 but sum stays at last_ht_sum
+            # to keep the cumulative series gap-free for the Energy Dashboard.
             ht_statistics.append(
                 StatisticData(start=hour_start, state=0.0, sum=last_ht_sum)
             )
@@ -280,7 +285,11 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_read_stats_before(
         self, cutoff: datetime
     ) -> dict[str, list[dict]]:
-        """Read all stored statistics before cutoff for every statistic ID."""
+        """Read all stored statistics before cutoff for every statistic ID.
+
+        Used during partial rebuild: we need the cumulative sums up to the cutoff
+        so new data can continue from the correct base after clearing and re-inserting.
+        """
         return await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
@@ -311,16 +320,23 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             self._rebuild_since = None
 
             if rebuild_since is not None:
+                # Partial rebuild: preserve stats before the cutoff, clear everything,
+                # re-insert preserved data, then fetch and recalculate from rebuild_since onward.
                 pre_stats = await self._async_read_stats_before(rebuild_since)
                 get_instance(self.hass).async_clear_statistics(self.statistic_ids)
                 if pre_stats:
                     self._reinsert_pre_stats(pre_stats)
                 nt_pre = pre_stats.get(self._normal_tariff_qh_id, []) if pre_stats else []
                 if nt_pre:
+                    ht_pre = pre_stats.get(self._high_tariff_qh_id, []) if pre_stats else []
+                    total_pre = pre_stats.get(self._total_energy_qh_id, []) if pre_stats else []
+                    cost_pre = pre_stats.get(self._cost_qh_id, []) if pre_stats else []
+                    # Use the last entry of each preserved stat as the cumulative base
+                    # so new data continues seamlessly from the old.
                     last_nt_stat = {self._normal_tariff_qh_id: [nt_pre[-1]]}
-                    last_ht_stat = {self._high_tariff_qh_id: [pre_stats[self._high_tariff_qh_id][-1]]}
-                    last_total_stat = {self._total_energy_qh_id: [pre_stats[self._total_energy_qh_id][-1]]}
-                    last_cost_stat = {self._cost_qh_id: [pre_stats[self._cost_qh_id][-1]]}
+                    last_ht_stat = {self._high_tariff_qh_id: [ht_pre[-1]]} if ht_pre else None
+                    last_total_stat = {self._total_energy_qh_id: [total_pre[-1]]} if total_pre else None
+                    last_cost_stat = {self._cost_qh_id: [cost_pre[-1]]} if cost_pre else None
                 else:
                     last_nt_stat = None
                     last_ht_stat = None
@@ -487,7 +503,15 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
     def _reinsert_pre_stats(
         self, pre_stats: dict[str, list[dict]]
     ) -> None:
-        """Re-insert pre-rebuild statistics after clearing."""
+        """Re-insert pre-rebuild statistics after clearing.
+
+        The recorder's async_clear_statistics removes ALL data for the given IDs,
+        including data before the rebuild cutoff. We need to put that data back
+        so the Energy Dashboard retains its history up to the cutoff point.
+
+        When entries lack a 'state' field (common with statistics_during_period),
+        we derive it from consecutive sum differences.
+        """
         labels = {
             self._normal_tariff_qh_id: ("Normal Tariff", "kWh", EnergyConverter.UNIT_CLASS),
             self._high_tariff_qh_id: ("High Tariff", "kWh", EnergyConverter.UNIT_CLASS),

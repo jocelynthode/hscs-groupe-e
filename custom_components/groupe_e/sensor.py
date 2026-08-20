@@ -1,7 +1,5 @@
 """Sensor platform for Groupe-E statistics."""
 
-from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.statistics import get_last_statistics
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -28,6 +26,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
 
+_SUFFIX_TO_LATEST = {
+    "normal_tariff": "_latest_nt_sum",
+    "high_tariff": "_latest_ht_sum",
+    "total_energy": "_latest_total_sum",
+}
+
 class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
     """Expose the latest cumulative sum for an energy statistic."""
 
@@ -35,6 +39,7 @@ class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._statistic_id = getattr(coordinator, f"_{suffix}_qh_id")
+        self._latest_attr = _SUFFIX_TO_LATEST[suffix]
         self._attr_name = f"Groupe-E {label} {coordinator._label}"
         self._attr_unique_id = f"{coordinator.premise}_{suffix}"
         self._attr_device_class = SensorDeviceClass.ENERGY
@@ -46,33 +51,19 @@ class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
     def available(self):
         return True
 
-    async def _fetch_and_update(self) -> None:
-        """Fetch the latest sum from the recorder and update state."""
-        instance = get_instance(self.hass)
-        stats = await instance.async_add_executor_job(
-            get_last_statistics, self.hass, 1, self._statistic_id, True, {"sum"}
-        )
-        if stats and self._statistic_id in stats:
-            self._attr_native_value = stats[self._statistic_id][0].get("sum")
-        else:
-            self._attr_native_value = None
-        self.async_write_ha_state()
+    @property
+    def native_value(self):
+        """Return the latest sum from coordinator in-memory data."""
+        return getattr(self.coordinator, self._latest_attr, None)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update sensor when coordinator refreshes."""
-        self.hass.async_create_task(self._fetch_and_update())
+        self.async_write_ha_state()
 
     async def async_update(self):
-        """Fetch the latest sum from the recorder."""
-        instance = get_instance(self.hass)
-        stats = await instance.async_add_executor_job(
-            get_last_statistics, self.hass, 1, self._statistic_id, True, {"sum"}
-        )
-        if stats and self._statistic_id in stats:
-            self._attr_native_value = stats[self._statistic_id][0].get("sum")
-        else:
-            self._attr_native_value = None
+        """Fetch the latest sum from the coordinator."""
+        self.async_write_ha_state()
 
 
 class GroupeECostSensor(CoordinatorEntity, SensorEntity):
@@ -93,33 +84,19 @@ class GroupeECostSensor(CoordinatorEntity, SensorEntity):
     def available(self):
         return True
 
-    async def _fetch_and_update(self) -> None:
-        """Fetch the latest sum from the recorder and update state."""
-        instance = get_instance(self.hass)
-        stats = await instance.async_add_executor_job(
-            get_last_statistics, self.hass, 1, self._statistic_id, True, {"sum"}
-        )
-        if stats and self._statistic_id in stats:
-            self._attr_native_value = stats[self._statistic_id][0].get("sum")
-        else:
-            self._attr_native_value = None
-        self.async_write_ha_state()
+    @property
+    def native_value(self):
+        """Return the latest cost from coordinator in-memory data."""
+        return self.coordinator._latest_cost_sum
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update sensor when coordinator refreshes."""
-        self.hass.async_create_task(self._fetch_and_update())
+        self.async_write_ha_state()
 
     async def async_update(self):
-        """Fetch the latest sum from the recorder."""
-        instance = get_instance(self.hass)
-        stats = await instance.async_add_executor_job(
-            get_last_statistics, self.hass, 1, self._statistic_id, True, {"sum"}
-        )
-        if stats and self._statistic_id in stats:
-            self._attr_native_value = stats[self._statistic_id][0].get("sum")
-        else:
-            self._attr_native_value = None
+        """Fetch the latest cost from the coordinator."""
+        self.async_write_ha_state()
 
 
 class GroupeEPriceSensor(CoordinatorEntity, SensorEntity):
