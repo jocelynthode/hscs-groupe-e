@@ -1,63 +1,101 @@
+import asyncio
 import logging
+from typing import Any
+from datetime import datetime, timedelta, timezone
+
 import aiohttp
-from aiohttp import ClientSession
-from datetime import datetime
+from aiohttp import ClientSession, ClientTimeout
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class GroupeEAuthError(Exception):
+    """Authentication or authorization failed."""
+
+
+class GroupeEApiError(Exception):
+    """Groupe-E API request failed."""
+
+
+_TOKEN_GRACE = 60
+
 
 class GroupeEAPI:
     """Class to interact with Groupe-E API."""
 
+    LOGIN_URL = (
+        "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/token"
+    )
+    DATA_URL = "https://my.groupe-e.ch/api/smartmeter-data"
+    REQUEST_TIMEOUT = 30
+
     def __init__(self, session: ClientSession, username: str, password: str):
-        """Initialize the API client."""
         self._session = session
         self._username = username
         self._password = password
         self._token = None
+        self._token_expires_at: datetime | None = None
 
-    async def _async_login(self):
-        """Perform login to obtain Bearer token."""
-        # This is a placeholder for the actual login logic.
-        # Since Groupe-E uses Keycloak, we need to mimic the login form or use password grant if enabled.
-        # For now, we will assume we can obtain a token.
-        # In a real scenario, this would involve posting to the token endpoint with password grant.
+    @property
+    def _token_expired(self) -> bool:
+        if self._token_expires_at is None:
+            return True
+        return datetime.now(timezone.utc) >= self._token_expires_at
 
-        login_url = "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/token"
+    async def _async_login(self) -> None:
         payload = {
             "grant_type": "password",
             "client_id": "portal",
             "username": self._username,
             "password": self._password,
         }
-
         try:
-            async with self._session.post(login_url, data=payload) as response:
+            async with self._session.post(
+                self.LOGIN_URL,
+                data=payload,
+                timeout=ClientTimeout(total=self.REQUEST_TIMEOUT),
+            ) as response:
                 if response.status == 200:
                     data = await response.json()
                     self._token = data.get("access_token")
-                    return True
-                else:
-                    _LOGGER.error("Login failed with status %s", response.status)
-                    return False
-        except Exception as err:
-            _LOGGER.error("Error during login: %s", err)
-            return False
+                    expires_in = max(int(data.get("expires_in", 300)), _TOKEN_GRACE)
+                    self._token_expires_at = datetime.now(timezone.utc) + timedelta(
+                        seconds=expires_in - _TOKEN_GRACE
+                    )
+                    return
+                _LOGGER.error("Login failed with status %s", response.status)
+                self._token = None
+                self._token_expires_at = None
+                raise GroupeEAuthError(f"Login failed with status {response.status}")
+        except GroupeEAuthError:
+            raise
+        except asyncio.TimeoutError as err:
+            _LOGGER.error("Login timed out")
+            self._token = None
+            self._token_expires_at = None
+            raise GroupeEAuthError("Login timed out") from err
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Login connection error: %s", err)
+            self._token = None
+            self._token_expires_at = None
+            raise GroupeEAuthError(f"Login connection failed: {err}") from err
 
-    async def get_smartmeter_data(self, premise: str, partner: str, start: datetime, end: datetime, resolution: str = "quarter-hourly"):
-        """Fetch smart meter data."""
-        if not self._token:
-            if not await self._async_login():
-                return None
+    async def get_smartmeter_data(
+        self,
+        premise: str,
+        partner: str,
+        start: datetime,
+        end: datetime,
+        resolution: str = "quarter-hourly",
+    ) -> list[dict[str, Any]] | None:
+        if not self._token or self._token_expired:
+            await self._async_login()
 
         headers = {
             "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/plain, */*",
-            "X-Requested-With": "XMLHttpRequest",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "application/json",
         }
 
-        # Convert datetimes to milliseconds timestamps
         start_ts = int(start.timestamp() * 1000)
         end_ts = int(end.timestamp() * 1000)
 
@@ -66,17 +104,61 @@ class GroupeEAPI:
             "partner": partner,
             "start": start_ts,
             "end": end_ts,
-            "resolution": resolution
+            "resolution": resolution,
         }
 
-        async with self._session.post(
-            "https://my.groupe-e.ch/api/smartmeter-data",
-            json=payload,
-            headers=headers
-        ) as response:
-            if response.status == 401: # Token expired
-                self._token = None
-                return await self.get_smartmeter_data(premise, partner, start, end)
+        _LOGGER.debug(
+            "Requesting Groupe-E data: resolution=%s, start=%s, end=%s",
+            resolution,
+            start,
+            end,
+        )
 
-            response.raise_for_status()
-            return await response.json()
+        timeout = ClientTimeout(total=self.REQUEST_TIMEOUT)
+
+        for attempt in range(3):
+            try:
+                async with self._session.post(
+                    self.DATA_URL,
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                ) as response:
+                    if response.status == 401:
+                        if attempt == 0:
+                            self._token = None
+                            self._token_expires_at = None
+                            await self._async_login()
+                            headers["Authorization"] = f"Bearer {self._token}"
+                            continue
+                        _LOGGER.error("Persistent 401 after re-login")
+                        raise GroupeEAuthError("Persistent authentication failure")
+
+                    if response.status == 403:
+                        raise GroupeEAuthError("Access forbidden (403)")
+
+                    if response.status == 429:
+                        raise GroupeEApiError("Rate limited (429)")
+
+                    if response.status >= 500:
+                        raise GroupeEApiError(f"Server error (HTTP {response.status})")
+
+                    response.raise_for_status()
+                    data = await response.json()
+                    _LOGGER.debug(
+                        "Received %d Groupe-E channels for resolution=%s",
+                        len(data) if isinstance(data, list) else 0,
+                        resolution,
+                    )
+                    return data
+
+            except GroupeEAuthError:
+                raise
+            except GroupeEApiError:
+                raise
+            except asyncio.TimeoutError as err:
+                raise GroupeEApiError("Request timed out") from err
+            except aiohttp.ClientError as err:
+                raise GroupeEApiError(f"Request failed: {err}") from err
+
+        return None

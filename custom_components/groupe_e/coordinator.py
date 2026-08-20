@@ -1,37 +1,152 @@
 """DataUpdateCoordinator for Groupe-E."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
+from typing import Any
+
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
+
 from .const import DOMAIN
+from .api import GroupeEAuthError, GroupeEApiError
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _sum_channel_values(data, today_ts=None):
-    """Sum all measurement values from API response channels.
+def _safe_float(value: Any) -> float:
+    """Convert a value to float, returning 0.0 for non-numeric values."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        _LOGGER.debug(
+            "Could not convert value to float: %s (type=%s)",
+            value,
+            type(value).__name__,
+        )
+        return 0.0
 
-    The API returns separate channels (NT, HT) that both need to be summed.
-    If today_ts is set, only entries before that timestamp are counted.
+
+def _sum_measurements(
+    data: list[dict[str, Any]] | None, before_ts: int | None = None
+) -> float:
+    """Sum measurement values across all channels.
+
+    The API returns separate tariff channels (NT, HT) that both need to be summed
+    for total consumption. Each channel contains measurements in the resolved unit
+    (kWh for monthly/daily, kW for quarter-hourly).
+
+    If before_ts is set, only entries with timestamp < before_ts are counted
+    (used to exclude today's data when splitting at midnight).
     """
-    total = 0
+    total = 0.0
     if not data or not isinstance(data, list):
         return total
     for item in data:
-        measurements = item.get("data", {}).get("measurementData", [])
-        for entry in measurements:
+        for entry in item.get("data", {}).get("measurementData", []):
             ts = entry.get("timestamp", 0)
-            if today_ts is not None and ts >= today_ts:
+            if before_ts is not None and ts >= before_ts:
                 continue
-            total += entry.get("value", 0)
+            total += _safe_float(entry.get("value"))
     return total
+
+
+def _sum_kw_to_kwh(data: list[dict[str, Any]] | None) -> float:
+    """Convert quarter-hourly kW measurements to kWh.
+
+    The Groupe-E API returns quarter-hourly measurements in kW (instantaneous power).
+    Each 15-minute interval represents kW * 0.25h = kWh of energy.
+    """
+    total = 0.0
+    if not data or not isinstance(data, list):
+        return total
+    for item in data:
+        for entry in item.get("data", {}).get("measurementData", []):
+            total += _safe_float(entry.get("value")) / 4
+    return total
+
+
+def _get_latest_measurement(
+    measurements: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the measurement with the highest timestamp."""
+    if not measurements:
+        return None
+    return max(measurements, key=lambda e: e.get("timestamp", 0))
+
+
+def _has_measurements(data: list[dict[str, Any]] | None) -> bool:
+    """Check if any channel in the response contains measurement entries."""
+    if not data:
+        return False
+    return any(
+        item.get("data", {}).get("measurementData", [])
+        for item in data
+    )
+
+
+def _calculate_yesterday_consumption(
+    daily_data: list[dict[str, Any]] | None,
+    today_ts: int,
+) -> float:
+    """Sum daily measurements with timestamps before local midnight."""
+    return _sum_measurements(daily_data, before_ts=today_ts)
+
+
+def _calculate_daily_consumption(
+    detailed_data: list[dict[str, Any]] | None,
+    daily_data: list[dict[str, Any]] | None,
+    yesterday_consumption: float,
+) -> float:
+    """Calculate today's consumption from quarter-hourly data, or fallback to daily."""
+    if _has_measurements(detailed_data):
+        return _sum_kw_to_kwh(detailed_data)
+    fallback = _sum_measurements(daily_data) - yesterday_consumption
+    return max(0.0, fallback)
+
+
+def _calculate_monthly_consumption(
+    monthly_data: list[dict[str, Any]] | None,
+    daily_consumption: float,
+) -> float:
+    """Calculate current month consumption.
+
+    The monthly API excludes today, so today's detailed data is added.
+    """
+    monthly = 0.0
+    if not monthly_data or not isinstance(monthly_data, list):
+        return monthly + daily_consumption
+    for item in monthly_data:
+        latest = _get_latest_measurement(
+            item.get("data", {}).get("measurementData", [])
+        )
+        if latest is not None:
+            monthly += _safe_float(latest.get("value"))
+    return monthly + daily_consumption
+
+
+def _calculate_yearly_consumption(
+    monthly_data: list[dict[str, Any]] | None,
+    daily_consumption: float,
+) -> float:
+    """Calculate yearly consumption from summed monthly channels plus today."""
+    yearly = _sum_measurements(monthly_data)
+    return yearly + daily_consumption
 
 
 class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Groupe-E data."""
 
-    def __init__(self, hass, api, premise, partner, update_interval, config_entry):
-        """Initialize."""
+    def __init__(
+        self,
+        hass,
+        api,
+        premise: str,
+        partner: str,
+        update_interval: int,
+        config_entry,
+    ):
         super().__init__(
             hass,
             _LOGGER,
@@ -44,140 +159,58 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         self.partner = partner
 
     async def _async_update_data(self):
-        """Fetch data from API."""
         try:
-            now = datetime.now()
-            start_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            now = dt_util.now()
+            start_year = now.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             yesterday_start = today_start - timedelta(days=1)
             today_ts = int(today_start.timestamp() * 1000)
-            yesterday_ts = int(yesterday_start.timestamp() * 1000)
 
-            # Fetch monthly data (pre-aggregated) for yearly and monthly totals
             monthly_data = await self.api.get_smartmeter_data(
                 self.premise, self.partner, start_year, now, resolution="monthly"
             )
 
-            # The Groupe-E API can return the wrong resolution (e.g., quarter-hourly data
-            # for a monthly request). Validate by checking channel IDs and retry/fallback.
-            _monthly_api_ok = True
-            if isinstance(monthly_data, list):
-                def has_wrong_resolution(data):
-                    return any(
-                        "quarterhourly" in (item.get("id") or "").lower()
-                        for item in data
-                    )
-                if has_wrong_resolution(monthly_data):
-                    _LOGGER.debug("Monthly API returned wrong resolution, retrying")
-                    monthly_data = await self.api.get_smartmeter_data(
-                        self.premise, self.partner, start_year, now, resolution="monthly"
-                    )
-                    if has_wrong_resolution(monthly_data):
-                        _LOGGER.debug("Monthly API still wrong after retry, falling back to daily data")
-                        monthly_data = await self.api.get_smartmeter_data(
-                            self.premise, self.partner, start_year, now, resolution="daily"
-                        )
-                        _monthly_api_ok = False
-
-            _LOGGER.debug("Monthly data entries: %s", len(monthly_data) if isinstance(monthly_data, list) else "not a list")
-
-            # Fetch daily data for yesterday and today (just 2 days, compact)
             daily_data = await self.api.get_smartmeter_data(
                 self.premise, self.partner, yesterday_start, now, resolution="daily"
             )
 
-            # Fetch quarter-hourly data for today's accurate reading
-            today_detailed_data = await self.api.get_smartmeter_data(
-                self.premise, self.partner, today_start, now, resolution="quarter-hourly"
+            detailed_data = await self.api.get_smartmeter_data(
+                self.premise,
+                self.partner,
+                today_start,
+                now,
+                resolution="quarter-hourly",
             )
 
-            yearly_consumption = 0
-            daily_consumption = 0
-            yesterday_consumption = 0
-            monthly_consumption = 0
+            if not monthly_data and not daily_data and not detailed_data:
+                if self.data:
+                    _LOGGER.warning(
+                        "Groupe-E returned no data; keeping previous values"
+                    )
+                    return self.data
+                raise UpdateFailed("Groupe-E returned no data")
 
-            # Check if quarter-hourly data is available
-            has_detailed_data = False
-            if today_detailed_data and isinstance(today_detailed_data, list):
-                for item in today_detailed_data:
-                    if item.get("data", {}).get("measurementData", []):
-                        has_detailed_data = True
-                        break
-
-            # Yearly: sum all monthly NT + HT values (Jan through current partial month)
-            yearly_consumption = _sum_channel_values(monthly_data)
-            _LOGGER.debug("Monthly sum before today data: %s", yearly_consumption)
-
-            # Monthly: current month-to-date from the last monthly entry per channel
-            # (or sum of daily entries in current month when using daily fallback)
-            monthly_consumption = 0
-            if monthly_data and isinstance(monthly_data, list):
-                if _monthly_api_ok:
-                    for item in monthly_data:
-                        measurements = item.get("data", {}).get("measurementData", [])
-                        _LOGGER.debug("Channel %s has %d measurement entries", item.get("id"), len(measurements))
-                        if measurements:
-                            last_entry = measurements[-1]
-                            monthly_consumption += last_entry.get("value", 0)
-                else:
-                    current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    current_month_ts = int(current_month_start.timestamp() * 1000)
-                    for item in monthly_data:
-                        measurements = item.get("data", {}).get("measurementData", [])
-                        for entry in measurements:
-                            ts = entry.get("timestamp", 0)
-                            if ts >= current_month_ts:
-                                monthly_consumption += entry.get("value", 0)
-
-            # Yesterday: sum daily values with timestamps before local midnight
-            yesterday_consumption = _sum_channel_values(daily_data, today_ts)
-
-            # Today's consumption from quarter-hourly data, or fallback to daily
-            daily_consumption = 0
-            if has_detailed_data:
-                for item in today_detailed_data:
-                    measurements = item.get("data", {}).get("measurementData", [])
-                    for entry in measurements:
-                        value = entry.get("value", 0)
-                        # The API returns values in kW for 15-minute intervals.
-                        # Divide by 4 to convert to kWh.
-                        daily_consumption += value / 4
-                # Monthly API is updated once per day; add today's partial data
-                yearly_consumption += daily_consumption
-                monthly_consumption += daily_consumption
-            else:
-                # Fallback: total daily values (yesterday + today) minus yesterday
-                daily_consumption = _sum_channel_values(daily_data, None) - yesterday_consumption
-
-            found_monthly = (
-                monthly_data
-                and isinstance(monthly_data, list)
-                and any(
-                    item.get("data", {}).get("measurementData", [])
-                    for item in monthly_data
-                )
+            yesterday_consumption = _calculate_yesterday_consumption(
+                daily_data, today_ts
             )
-            found_daily = (
-                daily_data
-                and isinstance(daily_data, list)
-                and any(
-                    item.get("data", {}).get("measurementData", [])
-                    for item in daily_data
-                )
+            daily_consumption = _calculate_daily_consumption(
+                detailed_data, daily_data, yesterday_consumption
             )
-
-            if not found_monthly and not has_detailed_data and not found_daily:
-                _LOGGER.warning("No measurementData found in Groupe-E API response")
-                return self.data if self.data else {
-                    "yearly_consumption": 0,
-                    "daily_consumption": 0,
-                    "yesterday_consumption": 0,
-                    "monthly_consumption": 0,
-                }
+            monthly_consumption = _calculate_monthly_consumption(
+                monthly_data, daily_consumption
+            )
+            yearly_consumption = _calculate_yearly_consumption(
+                monthly_data, daily_consumption
+            )
 
             _LOGGER.debug(
                 "Yearly: %s, Daily: %s, Yesterday: %s, Monthly: %s",
-                yearly_consumption, daily_consumption, yesterday_consumption, monthly_consumption
+                yearly_consumption,
+                daily_consumption,
+                yesterday_consumption,
+                monthly_consumption,
             )
 
             return {
@@ -186,6 +219,9 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                 "yesterday_consumption": round(yesterday_consumption, 2),
                 "monthly_consumption": round(monthly_consumption, 2),
             }
+        except (GroupeEAuthError, GroupeEApiError) as err:
+            _LOGGER.error("Groupe-E API error: %s", err)
+            raise UpdateFailed(str(err)) from err
         except Exception as err:
-            _LOGGER.error("Error communicating with Groupe-E API: %s", err)
-            raise UpdateFailed(f"Error communicating with API: {err}")
+            _LOGGER.exception("Unexpected error processing Groupe-E data")
+            raise UpdateFailed(f"Unexpected error: {err}") from err
