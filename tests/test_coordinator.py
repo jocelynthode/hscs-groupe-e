@@ -570,8 +570,18 @@ class TestInsertQuarterHourlyStatistics:
 
     async def test_sets_latest_sums_with_data(self, coordinator):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
-        data = [{"data": {"measurementData": [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]}}]
-        await coordinator._insert_quarter_hourly_statistics(data, None, None, None, None)
+        data = [
+            {
+                "data": {
+                    "measurementData": [
+                        {"timestamp": int(ts.timestamp() * 1000), "value": 4.0}
+                    ]
+                }
+            }
+        ]
+        await coordinator._insert_quarter_hourly_statistics(
+            data, None, None, None, None
+        )
         assert coordinator._latest_nt_sum == 0.0
         assert coordinator._latest_ht_sum == 1.0
         assert coordinator._latest_total_sum == 1.0
@@ -580,12 +590,36 @@ class TestInsertQuarterHourlyStatistics:
     async def test_sets_latest_sums_from_existing(self, coordinator):
         existing_hour = datetime(2026, 8, 19, 7, 0, tzinfo=timezone.utc)
         new_hour = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
-        nt_stat = {coordinator._normal_tariff_qh_id: [{"start": existing_hour.timestamp(), "sum": 50.0}]}
-        ht_stat = {coordinator._high_tariff_qh_id: [{"start": existing_hour.timestamp(), "sum": 60.0}]}
-        total_stat = {coordinator._total_energy_qh_id: [{"start": existing_hour.timestamp(), "sum": 110.0}]}
-        cost_stat = {coordinator._cost_qh_id: [{"start": existing_hour.timestamp(), "sum": 12.0}]}
-        data = [{"data": {"measurementData": [{"timestamp": int(new_hour.timestamp() * 1000), "value": 4.0}]}}]
-        await coordinator._insert_quarter_hourly_statistics(data, nt_stat, ht_stat, total_stat, cost_stat)
+        nt_stat = {
+            coordinator._normal_tariff_qh_id: [
+                {"start": existing_hour.timestamp(), "sum": 50.0}
+            ]
+        }
+        ht_stat = {
+            coordinator._high_tariff_qh_id: [
+                {"start": existing_hour.timestamp(), "sum": 60.0}
+            ]
+        }
+        total_stat = {
+            coordinator._total_energy_qh_id: [
+                {"start": existing_hour.timestamp(), "sum": 110.0}
+            ]
+        }
+        cost_stat = {
+            coordinator._cost_qh_id: [{"start": existing_hour.timestamp(), "sum": 12.0}]
+        }
+        data = [
+            {
+                "data": {
+                    "measurementData": [
+                        {"timestamp": int(new_hour.timestamp() * 1000), "value": 4.0}
+                    ]
+                }
+            }
+        ]
+        await coordinator._insert_quarter_hourly_statistics(
+            data, nt_stat, ht_stat, total_stat, cost_stat
+        )
         assert coordinator._latest_nt_sum == 50.0
         assert coordinator._latest_ht_sum == 61.0
         assert coordinator._latest_total_sum == 111.0
@@ -600,7 +634,9 @@ class TestInsertQuarterHourlyStatistics:
 
     async def test_no_measurements(self, coordinator):
         data = [{"data": {"measurementData": []}}]
-        await coordinator._insert_quarter_hourly_statistics(data, None, None, None, None)
+        await coordinator._insert_quarter_hourly_statistics(
+            data, None, None, None, None
+        )
         coordinator._insert_statistics.assert_not_called()
         assert coordinator._latest_nt_sum is None
         assert coordinator._latest_ht_sum is None

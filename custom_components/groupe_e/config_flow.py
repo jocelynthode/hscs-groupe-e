@@ -51,8 +51,12 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PASSWORD): str,
                     vol.Required(CONF_PREMISE): str,
                     vol.Required(CONF_PARTNER): str,
-                    vol.Required(CONF_NT_PRICE): vol.All(vol.Coerce(float), vol.Range(min=0)),
-                    vol.Required(CONF_HT_PRICE): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                    vol.Required(CONF_NT_PRICE): vol.All(
+                        vol.Coerce(float), vol.Range(min=0)
+                    ),
+                    vol.Required(CONF_HT_PRICE): vol.All(
+                        vol.Coerce(float), vol.Range(min=0)
+                    ),
                     vol.Optional(CONF_STAT_ID_DISCRIMINATOR): str,
                 }
             ),
@@ -97,7 +101,6 @@ class GroupeEFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
 class ConfigFlow(GroupeEFlowHandler):
     """HA entrypoint wrapper for the flow handler."""
-
 
 
 class GroupeEOptionsFlowHandler(config_entries.OptionsFlowWithReload):

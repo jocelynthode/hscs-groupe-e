@@ -35,9 +35,11 @@ This Home Assistant integration fetches quarter-hourly consumption data from Gro
 3. Enter the following information:
    - **Username**: Your Groupe-E email.
    - **Password**: Your Groupe-E password.
-   - **Premise ID**: Your location identifier (see below).
-   - **Partner ID**: Your customer identifier (see below).
-   - **Statistics discriminator** (optional): A label for your meter (defaults to the premise ID). Useful if you have multiple premises, each gets its own statistics series (e.g. `groupe_e:energy_consumption_main_house`).
+   - **Premise ID** (e.g. 106180): Your location identifier (see below).
+   - **Partner ID** (e.g. 6050184): Your customer identifier (see below).
+   - **Normal tariff price (CHF/kWh)**: Your normal-tariff (bas tarif) price per kWh.
+   - **High tariff price (CHF/kWh)**: Your high-tariff (haut tarif) price per kWh.
+   - **Statistics discriminator** (optional, defaults to premise): A label for your meter. Useful if you have multiple premises, each gets its own statistics series (e.g. `groupe_e:energy_consumption_main_house`).
 
 ### How to find your Premise and Partner ID
 
@@ -105,22 +107,22 @@ No template sensors, no automations, no per-tariff static prices to enter.
 
 Delete all Groupe-E statistics and re-fetch from the API.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `entry_id` | string (required) | The Groupe-E config entry to reset |
-| `rebuild_since` | date (optional) | ISO date (e.g. `2026-01-01`). Clears and rebuilds from this date onward, preserving data before it |
-| `clear_all` | boolean (optional) | If `true`, deletes ALL statistics and rebuilds from Jan 1 of current year. Overrides `rebuild_since` |
+| Field           | Type               | Description                                                                                          |
+| --------------- | ------------------ | ---------------------------------------------------------------------------------------------------- |
+| `entry_id`      | string (required)  | The Groupe-E config entry to reset                                                                   |
+| `rebuild_since` | date (optional)    | ISO date (e.g. `2026-01-01`). Clears and rebuilds from this date onward, preserving data before it   |
+| `clear_all`     | boolean (optional) | If `true`, deletes ALL statistics and rebuilds from Jan 1 of current year. Overrides `rebuild_since` |
 
 If neither field is provided, preserves nothing before Jan 1 of the current year and rebuilds from that date.
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| Sensors show "unknown" after startup | First refresh failed (e.g. HTTP 500) | Check logs. The integration will retry on next poll interval. |
-| Sensors show "This entity is no longer being provided" | `async_setup_entry` failed | Restart HA. The integration now tolerates first-refresh failures. |
-| No data in Energy Dashboard after reset | Statistics need time to commit | Wait a few minutes, or trigger a manual refresh via the service. |
-| Wrong cost in Energy Dashboard | Prices changed but data was inserted with old prices | Use `groupe_e.reset_statistics` with `rebuild_since` set to the date the prices changed. |
+| Symptom                                                | Likely cause                                         | Fix                                                                                      |
+| ------------------------------------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Sensors show "unknown" after startup                   | First refresh failed (e.g. HTTP 500)                 | Check logs. The integration will retry on next poll interval.                            |
+| Sensors show "This entity is no longer being provided" | `async_setup_entry` failed                           | Restart HA. The integration now tolerates first-refresh failures.                        |
+| No data in Energy Dashboard after reset                | Statistics need time to commit                       | Wait a few minutes, or trigger a manual refresh via the service.                         |
+| Wrong cost in Energy Dashboard                         | Prices changed but data was inserted with old prices | Use `groupe_e.reset_statistics` with `rebuild_since` set to the date the prices changed. |
 
 ## How it works
 

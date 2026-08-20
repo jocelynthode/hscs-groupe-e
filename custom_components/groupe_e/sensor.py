@@ -32,6 +32,7 @@ _SUFFIX_TO_LATEST = {
     "total_energy": "_latest_total_sum",
 }
 
+
 class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
     """Expose the latest cumulative sum for an energy statistic."""
 

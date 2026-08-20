@@ -279,16 +279,18 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
 
     def _get_prices(self) -> dict[str, float]:
         """Get the NT and HT prices from config options or data."""
-        nt = self._config_entry.options.get(CONF_NT_PRICE) or self._config_entry.data.get(CONF_NT_PRICE, 0)
-        ht = self._config_entry.options.get(CONF_HT_PRICE) or self._config_entry.data.get(CONF_HT_PRICE, 0)
+        nt = self._config_entry.options.get(
+            CONF_NT_PRICE
+        ) or self._config_entry.data.get(CONF_NT_PRICE, 0)
+        ht = self._config_entry.options.get(
+            CONF_HT_PRICE
+        ) or self._config_entry.data.get(CONF_HT_PRICE, 0)
         return {
             "nt": float(nt),
             "ht": float(ht),
         }
 
-    async def _async_read_stats_before(
-        self, cutoff: datetime
-    ) -> dict[str, list[dict]]:
+    async def _async_read_stats_before(self, cutoff: datetime) -> dict[str, list[dict]]:
         """Read all stored statistics before cutoff for every statistic ID.
 
         Used during partial rebuild: we need the cumulative sums up to the cutoff
@@ -329,7 +331,9 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             rebuild_since = self._rebuild_since
             self._rebuild_since = None
 
-            if rebuild_since is not None and rebuild_since == datetime.min.replace(tzinfo=timezone.utc):
+            if rebuild_since is not None and rebuild_since == datetime.min.replace(
+                tzinfo=timezone.utc
+            ):
                 # Full clear: wipe everything, skip preservation, rebuild from year start.
                 get_instance(self.hass).async_clear_statistics(self.statistic_ids)
                 last_nt_stat = None
@@ -344,17 +348,31 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                 get_instance(self.hass).async_clear_statistics(self.statistic_ids)
                 if pre_stats:
                     self._reinsert_pre_stats(pre_stats)
-                nt_pre = pre_stats.get(self._normal_tariff_qh_id, []) if pre_stats else []
+                nt_pre = (
+                    pre_stats.get(self._normal_tariff_qh_id, []) if pre_stats else []
+                )
                 if nt_pre:
-                    ht_pre = pre_stats.get(self._high_tariff_qh_id, []) if pre_stats else []
-                    total_pre = pre_stats.get(self._total_energy_qh_id, []) if pre_stats else []
+                    ht_pre = (
+                        pre_stats.get(self._high_tariff_qh_id, []) if pre_stats else []
+                    )
+                    total_pre = (
+                        pre_stats.get(self._total_energy_qh_id, []) if pre_stats else []
+                    )
                     cost_pre = pre_stats.get(self._cost_qh_id, []) if pre_stats else []
                     # Use the last entry of each preserved stat as the cumulative base
                     # so new data continues seamlessly from the old.
                     last_nt_stat = {self._normal_tariff_qh_id: [nt_pre[-1]]}
-                    last_ht_stat = {self._high_tariff_qh_id: [ht_pre[-1]]} if ht_pre else None
-                    last_total_stat = {self._total_energy_qh_id: [total_pre[-1]]} if total_pre else None
-                    last_cost_stat = {self._cost_qh_id: [cost_pre[-1]]} if cost_pre else None
+                    last_ht_stat = (
+                        {self._high_tariff_qh_id: [ht_pre[-1]]} if ht_pre else None
+                    )
+                    last_total_stat = (
+                        {self._total_energy_qh_id: [total_pre[-1]]}
+                        if total_pre
+                        else None
+                    )
+                    last_cost_stat = (
+                        {self._cost_qh_id: [cost_pre[-1]]} if cost_pre else None
+                    )
                 else:
                     last_nt_stat = None
                     last_ht_stat = None
@@ -362,9 +380,13 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                     last_cost_stat = None
                 start = rebuild_since
             else:
-                last_nt_stat = await self._async_get_last_stat(self._normal_tariff_qh_id)
+                last_nt_stat = await self._async_get_last_stat(
+                    self._normal_tariff_qh_id
+                )
                 last_ht_stat = await self._async_get_last_stat(self._high_tariff_qh_id)
-                last_total_stat = await self._async_get_last_stat(self._total_energy_qh_id)
+                last_total_stat = await self._async_get_last_stat(
+                    self._total_energy_qh_id
+                )
                 last_cost_stat = await self._async_get_last_stat(self._cost_qh_id)
 
                 nt_has_data = last_nt_stat and self._normal_tariff_qh_id in last_nt_stat
@@ -496,7 +518,9 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "kWh",
             EnergyConverter.UNIT_CLASS,
         )
-        self._latest_nt_sum = nt_statistics[-1]["sum"] if nt_statistics else nt_running_sum
+        self._latest_nt_sum = (
+            nt_statistics[-1]["sum"] if nt_statistics else nt_running_sum
+        )
         self._insert_statistics(
             ht_statistics,
             self._high_tariff_qh_id,
@@ -504,7 +528,9 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "kWh",
             EnergyConverter.UNIT_CLASS,
         )
-        self._latest_ht_sum = ht_statistics[-1]["sum"] if ht_statistics else ht_running_sum
+        self._latest_ht_sum = (
+            ht_statistics[-1]["sum"] if ht_statistics else ht_running_sum
+        )
         self._insert_statistics(
             total_statistics,
             self._total_energy_qh_id,
@@ -512,15 +538,17 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             "kWh",
             EnergyConverter.UNIT_CLASS,
         )
-        self._latest_total_sum = total_statistics[-1]["sum"] if total_statistics else total_running_sum
+        self._latest_total_sum = (
+            total_statistics[-1]["sum"] if total_statistics else total_running_sum
+        )
         self._insert_statistics(
             cost_statistics, self._cost_qh_id, "Energy Cost", "CHF", None
         )
-        self._latest_cost_sum = cost_statistics[-1]["sum"] if cost_statistics else cost_running_sum
+        self._latest_cost_sum = (
+            cost_statistics[-1]["sum"] if cost_statistics else cost_running_sum
+        )
 
-    def _reinsert_pre_stats(
-        self, pre_stats: dict[str, list[dict]]
-    ) -> None:
+    def _reinsert_pre_stats(self, pre_stats: dict[str, list[dict]]) -> None:
         """Re-insert pre-rebuild statistics after clearing.
 
         The recorder's async_clear_statistics removes ALL data for the given IDs,
@@ -531,16 +559,30 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         we derive it from consecutive sum differences.
         """
         labels = {
-            self._normal_tariff_qh_id: ("Normal Tariff", "kWh", EnergyConverter.UNIT_CLASS),
+            self._normal_tariff_qh_id: (
+                "Normal Tariff",
+                "kWh",
+                EnergyConverter.UNIT_CLASS,
+            ),
             self._high_tariff_qh_id: ("High Tariff", "kWh", EnergyConverter.UNIT_CLASS),
-            self._total_energy_qh_id: ("Grid Energy", "kWh", EnergyConverter.UNIT_CLASS),
+            self._total_energy_qh_id: (
+                "Grid Energy",
+                "kWh",
+                EnergyConverter.UNIT_CLASS,
+            ),
             self._cost_qh_id: ("Energy Cost", "CHF", None),
         }
         for stat_id, entries in pre_stats.items():
             if stat_id not in labels or not entries:
                 continue
             label, unit, unit_class = labels[stat_id]
-            entries.sort(key=lambda e: e["start"] if isinstance(e["start"], datetime) else datetime.fromtimestamp(e["start"], tz=timezone.utc))
+            entries.sort(
+                key=lambda e: (
+                    e["start"]
+                    if isinstance(e["start"], datetime)
+                    else datetime.fromtimestamp(e["start"], tz=timezone.utc)
+                )
+            )
             prev_sum = 0.0
             statistics: list[StatisticData] = []
             for e in entries:
@@ -549,9 +591,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                     start = datetime.fromtimestamp(start, tz=timezone.utc)
                 s = e["sum"]
                 state = e.get("state", s - prev_sum)
-                statistics.append(
-                    StatisticData(start=start, state=state, sum=s)
-                )
+                statistics.append(StatisticData(start=start, state=state, sum=s))
                 prev_sum = s
             metadata = StatisticMetaData(
                 mean_type=StatisticMeanType.NONE,
