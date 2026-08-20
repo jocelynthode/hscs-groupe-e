@@ -2,6 +2,6 @@
   "name": "Groupe-E Energy",
   "render_readme": true,
   "country": "CH",
-  "homeassistant": "2024.1.0",
+  "homeassistant": "2026.8.1",
   "iot_class": "cloud_polling"
 }
