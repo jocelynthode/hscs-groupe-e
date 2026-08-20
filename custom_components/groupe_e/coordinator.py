@@ -319,7 +319,15 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             rebuild_since = self._rebuild_since
             self._rebuild_since = None
 
-            if rebuild_since is not None:
+            if rebuild_since is not None and rebuild_since == datetime.min.replace(tzinfo=timezone.utc):
+                # Full clear: wipe everything, skip preservation, rebuild from year start.
+                get_instance(self.hass).async_clear_statistics(self.statistic_ids)
+                last_nt_stat = None
+                last_ht_stat = None
+                last_total_stat = None
+                last_cost_stat = None
+                start = year_start
+            elif rebuild_since is not None:
                 # Partial rebuild: preserve stats before the cutoff, clear everything,
                 # re-insert preserved data, then fetch and recalculate from rebuild_since onward.
                 pre_stats = await self._async_read_stats_before(rebuild_since)

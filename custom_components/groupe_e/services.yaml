@@ -11,8 +11,14 @@ reset_statistics:
           integration: groupe_e
     rebuild_since:
       name: Rebuild since
-      description: Only rebuild statistics from this date onward (ISO format, e.g. 2026-01-01). Defaults to start of current year.
+      description: Only rebuild statistics from this date onward (ISO format, e.g. 2026-01-01). Preserves data before this date. Defaults to start of current year.
       required: false
       selector:
         text:
           type: date
+    clear_all:
+      name: Clear all
+      description: If true, delete ALL statistics and rebuild from the start of the current year. Overrides rebuild_since. Defaults to false.
+      required: false
+      selector:
+        boolean:

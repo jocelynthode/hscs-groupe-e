@@ -81,12 +81,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             return
 
         rebuild_since = call.data.get("rebuild_since")
+        clear_all = call.data.get("clear_all", False)
         local_tz = ZoneInfo(TARIFF_TIMEZONE)
         now_local = datetime.now(local_tz)
         year_start_local = now_local.replace(
             month=1, day=1, hour=0, minute=0, second=0, microsecond=0
         )
-        if rebuild_since is not None:
+        if clear_all:
+            coordinator._rebuild_since = datetime.min.replace(tzinfo=timezone.utc)
+        elif rebuild_since is not None:
             if rebuild_since.tzinfo is None:
                 rebuild_since = rebuild_since.replace(tzinfo=ZoneInfo(TARIFF_TIMEZONE))
             rebuild_dt = rebuild_since.astimezone(local_tz).replace(
@@ -112,6 +115,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             {
                 vol.Required("entry_id"): vol.Coerce(str),
                 vol.Optional("rebuild_since"): vol.Coerce(datetime.fromisoformat),
+                vol.Optional("clear_all", default=False): bool,
             }
         ),
     )
