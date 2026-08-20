@@ -83,7 +83,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         @callback
         def _statistics_cleared() -> None:
             """Refresh coordinator after statistics have been cleared."""
-            hass.async_create_task(coordinator.async_request_refresh())
+            hass.create_task(coordinator.async_request_refresh())
 
         get_instance(hass).async_clear_statistics(
             statistic_ids,
