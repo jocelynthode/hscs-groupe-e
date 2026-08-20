@@ -4,7 +4,7 @@ import logging
 
 import voluptuous as vol
 from homeassistant.components.recorder import get_instance
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -40,7 +40,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = GroupeEDataUpdateCoordinator(
         hass, api, premise, partner, update_interval, entry
     )
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady:
+        _LOGGER.warning(
+            "Groupe-E first refresh failed, continuing setup: %s",
+            premise,
+        )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 

@@ -317,6 +317,10 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                 last_total_stat = None
                 last_cost_stat = None
 
+            if start >= today_start:
+                _LOGGER.debug("Statistics already up to date, skipping API request")
+                return {}
+
             detailed_data = await self.api.get_smartmeter_data(
                 self.premise,
                 self.partner,

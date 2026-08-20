@@ -42,6 +42,10 @@ class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_available = True
 
+    @property
+    def available(self):
+        return True
+
     async def _fetch_and_update(self) -> None:
         """Fetch the latest sum from the recorder and update state."""
         instance = get_instance(self.hass)
@@ -85,6 +89,10 @@ class GroupeECostSensor(CoordinatorEntity, SensorEntity):
         self._attr_native_unit_of_measurement = CURRENCY
         self._attr_available = True
 
+    @property
+    def available(self):
+        return True
+
     async def _fetch_and_update(self) -> None:
         """Fetch the latest sum from the recorder and update state."""
         instance = get_instance(self.hass)
@@ -125,6 +133,10 @@ class GroupeEPriceSensor(CoordinatorEntity, SensorEntity):
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = ENERGY_PRICE_UNIT
         self._attr_available = True
+
+    @property
+    def available(self):
+        return True
 
     @property
     def native_value(self):
