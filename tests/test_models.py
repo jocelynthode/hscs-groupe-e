@@ -18,7 +18,7 @@ QUARTER_HOURLY = [
     {
         "id": "quarterHourly",
         "data": {
-            "usagePointPublicId": "283122",
+            "usagePointPublicId": "123456",
             "from": 1787176800000,
             "to": 1787263200000,
             "channelCode": "CCH-S",
@@ -35,7 +35,7 @@ DAILY_NO_DATA = [
     {
         "id": "dailyNT",
         "data": {
-            "usagePointPublicId": "283122",
+            "usagePointPublicId": "123456",
             "from": 1795535200000,
             "to": 1798213600000,
             "channelCode": "CHC-Q",
@@ -46,7 +46,7 @@ DAILY_NO_DATA = [
     {
         "id": "dailyHT",
         "data": {
-            "usagePointPublicId": "283122",
+            "usagePointPublicId": "123456",
             "from": 1795535200000,
             "to": 1798213600000,
             "channelCode": "CHP-Q",
@@ -60,7 +60,7 @@ MONTHLY_NO_DATA = [
     {
         "id": "monthlyNT",
         "data": {
-            "usagePointPublicId": "283122",
+            "usagePointPublicId": "123456",
             "from": 1797222000000,
             "to": 1808758000000,
             "channelCode": "CHC-M",
@@ -71,7 +71,7 @@ MONTHLY_NO_DATA = [
     {
         "id": "monthlyHT",
         "data": {
-            "usagePointPublicId": "283122",
+            "usagePointPublicId": "123456",
             "from": 1797222000000,
             "to": 1808758000000,
             "channelCode": "CHP-M",
@@ -88,7 +88,7 @@ class TestSmartMeterResponse:
         assert len(response.channels) == 1
         channel = response.channels[0]
         assert channel.id == "quarterHourly"
-        assert channel.data.usage_point_public_id == "283122"
+        assert channel.data.usage_point_public_id == "123456"
         assert channel.data.from_time == 1787176800000
         assert channel.data.to_time == 1787263200000
         assert channel.data.channel_code == "CCH-S"
@@ -112,7 +112,7 @@ class TestSmartMeterResponse:
             {
                 "id": "quarterHourly",
                 "data": {
-                    "usagePointPublicId": "283122",
+                    "usagePointPublicId": "123456",
                     "from": 1797176800000,
                     "to": 1797263200000,
                     "channelCode": "CCH-S",

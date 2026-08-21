@@ -7,9 +7,12 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import callback
+from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CURRENCY, DOMAIN, ENERGY_PRICE_UNIT
+from .coordinator import GroupeEDataUpdateCoordinator
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -26,102 +29,99 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
 
-_SUFFIX_TO_LATEST = {
-    "normal_tariff": "_latest_nt_sum",
-    "high_tariff": "_latest_ht_sum",
-    "total_energy": "_latest_total_sum",
+_SUFFIX_TO_LATEST_KEY = {
+    "normal_tariff": "nt",
+    "high_tariff": "ht",
+    "total_energy": "total",
 }
 
 
-class GroupeETariffSensor(CoordinatorEntity, SensorEntity):
-    """Expose the latest cumulative sum for an energy statistic."""
+def _device_info(coordinator: GroupeEDataUpdateCoordinator) -> DeviceInfo:
+    """Return the shared device for all Groupe-E entities of an entry."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
+        name=f"Groupe-E {coordinator.label}",
+        manufacturer="Groupe-E",
+        model="Smart meter",
+        entry_type=DeviceEntryType.SERVICE,
+    )
 
-    def __init__(self, coordinator, suffix, label):
+
+class GroupeEBaseSensor(CoordinatorEntity, SensorEntity):
+    """Base class wiring common attributes for Groupe-E sensors."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: GroupeEDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._statistic_id = getattr(coordinator, f"_{suffix}_qh_id")
-        self._latest_attr = _SUFFIX_TO_LATEST[suffix]
-        self._attr_name = f"Groupe-E {label} {coordinator._label}"
+        self._attr_device_info = _device_info(coordinator)
+
+
+class GroupeETariffSensor(GroupeEBaseSensor):
+    """Expose the latest cumulative sum for an energy statistic."""
+
+    def __init__(
+        self,
+        coordinator: GroupeEDataUpdateCoordinator,
+        suffix: str,
+        label: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._statistic_id = coordinator.statistic_id_for(suffix)
+        self._latest_key = _SUFFIX_TO_LATEST_KEY[suffix]
+        self._attr_name = label
         self._attr_unique_id = f"{coordinator.premise}_{suffix}"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-        self._attr_available = True
 
     @property
-    def available(self):
-        return True
-
-    @property
-    def native_value(self):
-        """Return the latest sum from coordinator in-memory data."""
-        return getattr(self.coordinator, self._latest_attr, None)
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Update sensor when coordinator refreshes."""
-        self.async_write_ha_state()
-
-    async def async_update(self):
-        """Fetch the latest sum from the coordinator."""
-        self.async_write_ha_state()
+    def native_value(self) -> float | None:
+        """Return the latest cumulative sum from the coordinator."""
+        return self.coordinator.latest_sums[self._latest_key]
 
 
-class GroupeECostSensor(CoordinatorEntity, SensorEntity):
+class GroupeECostSensor(GroupeEBaseSensor):
     """Expose the latest cumulative cost in CHF."""
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: GroupeEDataUpdateCoordinator) -> None:
         """Initialize the cost sensor."""
         super().__init__(coordinator)
-        self._statistic_id = coordinator._cost_qh_id
-        self._attr_name = f"Groupe-E Energy Cost {coordinator._label}"
+        self._statistic_id = coordinator.statistic_id_for("cost")
+        self._attr_name = "Energy Cost"
         self._attr_unique_id = f"{coordinator.premise}_cost"
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_unit_of_measurement = CURRENCY
-        self._attr_available = True
 
     @property
-    def available(self):
-        return True
-
-    @property
-    def native_value(self):
-        """Return the latest cost from coordinator in-memory data."""
-        return self.coordinator._latest_cost_sum
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Update sensor when coordinator refreshes."""
-        self.async_write_ha_state()
-
-    async def async_update(self):
-        """Fetch the latest cost from the coordinator."""
-        self.async_write_ha_state()
+    def native_value(self) -> float | None:
+        """Return the latest cumulative cost from the coordinator."""
+        return self.coordinator.latest_sums["cost"]
 
 
-class GroupeEPriceSensor(CoordinatorEntity, SensorEntity):
+class GroupeEPriceSensor(GroupeEBaseSensor):
     """Expose the current electricity price based on the active tariff."""
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: GroupeEDataUpdateCoordinator) -> None:
         """Initialize the price sensor."""
         super().__init__(coordinator)
-        self._attr_name = f"Groupe-E Electricity Price {coordinator._label}"
+        self._attr_name = "Electricity Price"
         self._attr_unique_id = f"{coordinator.premise}_price"
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = ENERGY_PRICE_UNIT
-        self._attr_available = True
 
     @property
-    def available(self):
-        return True
-
-    @property
-    def native_value(self):
+    def native_value(self) -> float:
+        """Return the active tariff price."""
         return self.coordinator.current_price
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict:
+        """Expose the active tariff as an attribute."""
         return {
             "tariff": self.coordinator.current_tariff,
             "currency": CURRENCY,

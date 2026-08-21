@@ -12,10 +12,15 @@
 
 1. Add `custom_components.groupe_e: debug` to your logger config and restart.
 2. Check logs for:
-   - `"Adding N statistics entries"`, data was fetched and inserted.
-   - `"Skipping measurement with invalid ..."`, API returned bad data for some intervals.
+   - `"Adding N entries for ..."`, data was fetched and inserted.
    - `UpdateFailed`, an error occurred during fetch.
-3. In **Settings** > **Energy**, click **Add Grid Consumption** and select **Groupe-E Energy Consumption**. If the source doesn't appear, no statistics have been recorded yet.
+3. In **Settings** > **Energy**, click **Add Grid Consumption** and select **Groupe-E Grid Energy**. If the source doesn't appear, no statistics have been recorded yet.
+
+## After upgrading to v2.1.0
+
+- **"Cannot migrate unique_id ... already in use" warning**: you re-added the same premise under the new version before the old entry was migrated. The old entry keeps its identity and still works; delete whichever duplicate you don't want.
+- **"missing NT/HT tariff prices" warning**: your entry lost its prices to a v2.0.0 reconfigure bug. Set both prices under **Configure** (options) — until then, cost statistics are computed at 0 CHF/kWh. Existing cost statistics inserted while prices were missing can be corrected with `groupe_e.reset_statistics` (optionally with `rebuild_since`).
+- Migration runs automatically on restart; entities, history, and Energy Dashboard links are preserved.
 
 ## Authentication errors
 

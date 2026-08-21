@@ -14,6 +14,7 @@ See ``api.md`` for concrete example payloads.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, ClassVar
@@ -170,14 +171,17 @@ class SmartMeterResponse:
 
     @classmethod
     def from_json(cls, json_text: str) -> SmartMeterResponse:
-        import json
-
         return cls.from_dict(json.loads(json_text))
 
     @property
     def primary_channel(self) -> SmartMeterChannel | None:
         """Return the first channel, or None when the response is empty."""
         return self.channels[0] if self.channels else None
+
+    @property
+    def measurement_channels(self) -> list[SmartMeterChannel]:
+        """Return all channels that actually carry measurements."""
+        return [c for c in self.channels if c.has_measurements]
 
     @property
     def measurements(self) -> list[Measurement]:

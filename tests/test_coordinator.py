@@ -347,11 +347,11 @@ class TestReinsertPreStats:
     def coordinator(self):
         """Create a mock coordinator with the real _reinsert_pre_stats bound."""
         coord = MagicMock(spec=GroupeEDataUpdateCoordinator)
-        coord.premise = "283122"
-        coord._normal_tariff_qh_id = "groupe_e:energy_consumption_283122_normal_tariff"
-        coord._high_tariff_qh_id = "groupe_e:energy_consumption_283122_high_tariff"
-        coord._total_energy_qh_id = "groupe_e:energy_consumption_283122_total"
-        coord._cost_qh_id = "groupe_e:energy_consumption_283122_cost"
+        coord.premise = "123456"
+        coord._normal_tariff_qh_id = "groupe_e:energy_consumption_123456_normal_tariff"
+        coord._high_tariff_qh_id = "groupe_e:energy_consumption_123456_high_tariff"
+        coord._total_energy_qh_id = "groupe_e:energy_consumption_123456_total"
+        coord._cost_qh_id = "groupe_e:energy_consumption_123456_cost"
         coord.hass = MagicMock()
         coord._reinsert_pre_stats = MethodType(
             GroupeEDataUpdateCoordinator._reinsert_pre_stats, coord
@@ -414,10 +414,10 @@ class TestInsertQuarterHourlyStatistics:
     def coordinator(self):
         """Create a coordinator mock with the real method bound."""
         coord = MagicMock(spec=GroupeEDataUpdateCoordinator)
-        coord._normal_tariff_qh_id = "groupe_e:energy_consumption_283122_normal_tariff"
-        coord._high_tariff_qh_id = "groupe_e:energy_consumption_283122_high_tariff"
-        coord._total_energy_qh_id = "groupe_e:energy_consumption_283122_total"
-        coord._cost_qh_id = "groupe_e:energy_consumption_283122_cost"
+        coord._normal_tariff_qh_id = "groupe_e:energy_consumption_123456_normal_tariff"
+        coord._high_tariff_qh_id = "groupe_e:energy_consumption_123456_high_tariff"
+        coord._total_energy_qh_id = "groupe_e:energy_consumption_123456_total"
+        coord._cost_qh_id = "groupe_e:energy_consumption_123456_cost"
         coord._get_ht_periods = MagicMock(return_value=DEFAULT_HT_PERIODS)
         coord._get_prices = MagicMock(return_value={"nt": 0.2, "ht": 0.3})
         coord._insert_statistics = MagicMock()

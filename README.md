@@ -23,7 +23,7 @@ This Home Assistant integration fetches quarter-hourly consumption data from Gro
 1. Open HACS in Home Assistant.
 2. Click on **Integrations**.
 3. Click the three dots in the top right corner and select **Custom repositories**.
-4. Paste the URL of this repository: `https://github.com/carnevlu/hscs-groupe-e`
+4. Paste the URL of this repository: `https://github.com/jocelynthode/hscs-groupe-e`
 5. Select **Integration** as the category.
 6. Click **Add** and then install the **Groupe-E Energy** integration.
 7. Restart Home Assistant.
@@ -75,13 +75,17 @@ After configuration, go to **Settings** > **Devices & Services**, click the thre
 
 ## Sensors
 
-| Sensor                               | Description                                        | Unit    |
-| ------------------------------------ | -------------------------------------------------- | ------- |
-| `Groupe-E Normal Tariff Consumption` | Total kWh consumed during normal-tariff periods    | kWh     |
-| `Groupe-E High Tariff Consumption`   | Total kWh consumed during high-tariff periods      | kWh     |
-| `Groupe-E Grid Energy`               | Total kWh consumed (NT + HT)                       | kWh     |
-| `Groupe-E Energy Cost`               | Cumulative variable electricity cost               | CHF     |
-| `Groupe-E Electricity Price`         | Current active price per kWh (changes with tariff) | CHF/kWh |
+All entities are grouped under a single device per config entry, named after your discriminator (e.g. *Groupe-E 106180*):
+
+| Entity (friendly name)        | Description                                        | Unit    |
+| ----------------------------- | -------------------------------------------------- | ------- |
+| `Groupe-E 106180 Normal Tariff` | Total kWh consumed during normal-tariff periods  | kWh     |
+| `Groupe-E 106180 High Tariff`   | Total kWh consumed during high-tariff periods    | kWh     |
+| `Groupe-E 106180 Grid Energy`   | Total kWh consumed (NT + HT)                     | kWh     |
+| `Groupe-E 106180 Energy Cost`   | Cumulative variable electricity cost             | CHF     |
+| `Groupe-E 106180 Electricity Price` | Current active price per kWh (changes with tariff) | CHF/kWh |
+
+Replace `106180` with your premise ID (or custom discriminator).
 
 ## Usage in the Energy Dashboard
 
@@ -119,19 +123,29 @@ If neither field is provided, preserves nothing before Jan 1 of the current year
 
 | Symptom                                                | Likely cause                                         | Fix                                                                                      |
 | ------------------------------------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Sensors show "unknown" after startup                   | First refresh failed (e.g. HTTP 500)                 | Check logs. The integration will retry on next poll interval.                            |
-| Sensors show "This entity is no longer being provided" | `async_setup_entry` failed                           | Restart HA. The integration now tolerates first-refresh failures.                        |
+| Setup fails with "couldn't connect" / retries          | API unreachable or wrong premise/partner IDs         | Expected behavior: HA retries automatically with backoff. Check credentials and IDs.     |
+| Sensors show "unknown" after startup                   | First refresh failed (e.g. HTTP 500)                 | HA retries setup automatically; check logs for the underlying error.                     |
 | No data in Energy Dashboard after reset                | Statistics need time to commit                       | Wait a few minutes, or trigger a manual refresh via the service.                         |
 | Wrong cost in Energy Dashboard                         | Prices changed but data was inserted with old prices | Use `groupe_e.reset_statistics` with `rebuild_since` set to the date the prices changed. |
+| Log warning about missing NT/HT prices after upgrading | Prices lost by a reconfigure bug in v2.0.0           | Set both prices in **Configure** (options). Cost statistics need them to be non-zero.    |
 
 ## How it works
 
 1. The integration fetches 15-minute consumption data from the Groupe-E API.
 2. It aggregates measurements into hourly kWh values.
 3. Each hour is classified as NT or HT based on the configured tariff schedule and Swiss local time.
+   > **Note:** classification happens per full hour (at the top of each hour), so tariff schedules should be aligned to whole hours. A period like `07:30-12:00` would classify the entire 07:00–08:00 hour as normal tariff.
 4. The hourly kWh is multiplied by the appropriate NT or HT price to calculate the cost.
 5. All four statistic series (NT, HT, total energy, total cost) are inserted as **external statistics** with historical timestamps.
 6. The Energy Dashboard uses these pre-calculated statistics — it never needs to know what tariff was active at any historical time.
+
+## Upgrading from v2.0.x
+
+The upgrade is automatic — no action required on restart:
+
+- **Config entries are migrated** to a new identity scheme (`username:premise:partner`), which allows multiple premises under one Groupe-E account. Your entities, history, and Energy Dashboard links are preserved.
+- **Credentials and IDs are now validated during setup** — a typo'd password or premise ID shows an error in the form instead of creating a broken entry.
+- If your entry lost its NT/HT prices due to a v2.0.0 reconfigure bug, a warning appears in the logs after migration. Set the prices in **Configure** (options); they cannot be recovered automatically.
 
 ## Security and Privacy
 

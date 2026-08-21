@@ -5,13 +5,15 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import GroupeEAPI
 from .const import (
+    CONF_HT_PRICE,
+    CONF_NT_PRICE,
     CONF_PARTNER,
     CONF_PREMISE,
     CONF_UPDATE_INTERVAL,
@@ -28,12 +30,78 @@ PLATFORMS = ["sensor"]
 SERVICE_RESET_STATISTICS = "reset_statistics"
 
 
+def _entry_unique_id(entry: ConfigEntry) -> str:
+    """Build the canonical unique_id for a Groupe-E config entry."""
+    return (
+        f"{entry.data[CONF_USERNAME]}:{entry.data[CONF_PREMISE]}:"
+        f"{entry.data[CONF_PARTNER]}"
+    )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the current version.
+
+    Version 1 entries used the username as unique_id; version 2 uses
+    'username:premise:partner' so multiple premises per account work.
+    """
+    if entry.version > 2:
+        # Downgrade from a newer future version is not supported.
+        return False
+
+    if entry.version == 1:
+        new_unique_id = _entry_unique_id(entry)
+
+        # Guard against a collision: another entry may already use the new
+        # scheme (e.g. re-added under v2 before this entry was migrated).
+        collision = any(
+            other.entry_id != entry.entry_id and other.unique_id == new_unique_id
+            for other in hass.config_entries.async_entries(DOMAIN)
+        )
+        if collision:
+            _LOGGER.warning(
+                "Cannot migrate unique_id for entry %s: '%s' already in use; "
+                "keeping existing unique_id",
+                entry.entry_id,
+                new_unique_id,
+            )
+            hass.config_entries.async_update_entry(entry, version=2)
+        else:
+            hass.config_entries.async_update_entry(
+                entry, unique_id=new_unique_id, version=2
+            )
+            _LOGGER.debug(
+                "Migrated entry %s to version 2 (unique_id=%s)",
+                entry.entry_id,
+                new_unique_id,
+            )
+
+        # Repair hint: the v2.0.0 reconfigure flow could drop price keys from
+        # entry data. We cannot recover them, but warn loudly so users can fix
+        # the prices in the options flow instead of silently tracking 0 CHF.
+        prices = entry.options.get(CONF_NT_PRICE) or entry.data.get(CONF_NT_PRICE)
+        ht_price = entry.options.get(CONF_HT_PRICE) or entry.data.get(CONF_HT_PRICE)
+        if not prices or not ht_price:
+            _LOGGER.warning(
+                "Entry %s is missing NT/HT tariff prices (likely lost by an "
+                "older reconfigure bug). Set them in the integration options, "
+                "otherwise cost statistics will be computed at 0 CHF/kWh.",
+                entry.entry_id,
+            )
+
+    _LOGGER.info("Migrating configuration entry to version %s", entry.version)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Groupe-E Energy from a config entry."""
-    username = entry.data.get(CONF_USERNAME)
-    password = entry.data.get(CONF_PASSWORD)
-    premise = entry.data.get(CONF_PREMISE)
-    partner = entry.data.get(CONF_PARTNER)
+    """Set up Groupe-E Energy from a config entry.
+
+    Lets ConfigEntryNotReady propagate so Home Assistant retries setup with
+    exponential backoff when the API is unreachable.
+    """
+    username = entry.data[CONF_USERNAME]
+    password = entry.data[CONF_PASSWORD]
+    premise = entry.data[CONF_PREMISE]
+    partner = entry.data[CONF_PARTNER]
 
     api = GroupeEAPI(async_get_clientsession(hass), username, password)
 
@@ -42,13 +110,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = GroupeEDataUpdateCoordinator(
         hass, api, premise, partner, update_interval, entry
     )
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except ConfigEntryNotReady:
-        _LOGGER.warning(
-            "Groupe-E first refresh failed, continuing setup: %s",
-            premise,
-        )
+    await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
@@ -78,9 +140,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         """
         entry_id = call.data["entry_id"]
 
-        coordinator: GroupeEDataUpdateCoordinator | None = hass.data[DOMAIN].get(
-            entry_id
-        )
+        coordinator: GroupeEDataUpdateCoordinator | None = hass.data.get(
+            DOMAIN, {}
+        ).get(entry_id)
 
         if coordinator is None:
             _LOGGER.error("Config entry %s not found", entry_id)
@@ -90,28 +152,34 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         clear_all = call.data.get("clear_all", False)
         local_tz = ZoneInfo(TARIFF_TIMEZONE)
         now_local = datetime.now(local_tz)
-        year_start_local = now_local.replace(
-            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
-        )
+
         if clear_all:
-            coordinator._rebuild_since = datetime.min.replace(tzinfo=timezone.utc)
+            rebuild_dt = datetime.min.replace(tzinfo=timezone.utc)
         elif rebuild_since is not None:
             if rebuild_since.tzinfo is None:
-                rebuild_since = rebuild_since.replace(tzinfo=ZoneInfo(TARIFF_TIMEZONE))
-            rebuild_dt = rebuild_since.astimezone(local_tz).replace(
-                hour=0, minute=0, second=0, microsecond=0
+                rebuild_since = rebuild_since.replace(tzinfo=local_tz)
+            rebuild_dt = (
+                rebuild_since.astimezone(local_tz)
+                .replace(hour=0, minute=0, second=0, microsecond=0)
+                .astimezone(timezone.utc)
             )
-            coordinator._rebuild_since = rebuild_dt.astimezone(timezone.utc)
         else:
-            coordinator._rebuild_since = year_start_local.astimezone(timezone.utc)
+            rebuild_dt = now_local.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            ).astimezone(timezone.utc)
+
+        await coordinator.async_schedule_rebuild(rebuild_dt)
 
         _LOGGER.warning(
             "Resetting Groupe-E statistics for entry %s (rebuild_since=%s)",
             entry_id,
-            coordinator._rebuild_since,
+            rebuild_dt,
         )
 
-        hass.create_task(coordinator.async_request_refresh())
+        hass.async_create_background_task(
+            coordinator.async_request_refresh(),
+            f"groupe_e_reset_statistics_{entry_id}",
+        )
 
     hass.services.async_register(
         DOMAIN,

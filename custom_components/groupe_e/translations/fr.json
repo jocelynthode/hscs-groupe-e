@@ -3,6 +3,7 @@
     "step": {
       "user": {
         "title": "Connexion à Groupe-E",
+        "description": "Saisissez vos identifiants Groupe-E et les IDs trouvés dans votre portail.",
         "data": {
           "username": "Nom d'utilisateur",
           "password": "Mot de passe",
@@ -11,15 +12,29 @@
           "nt_price": "Prix bas tarif (CHF/kWh)",
           "ht_price": "Prix haut tarif (CHF/kWh)",
           "stat_id_discriminator": "Discriminant des statistiques (optionnel, par défaut l'ID du site)"
-        },
-        "description": "Saisissez vos identifiants Groupe-E et les IDs trouvés dans votre portail."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer Groupe-E",
+        "description": "Mettez à jour vos identifiants Groupe-E ou les paramètres du site.",
+        "data": {
+          "username": "Nom d'utilisateur",
+          "password": "Mot de passe",
+          "premise": "ID du site (p. ex. 106180)",
+          "partner": "ID partenaire (p. ex. 6050184)",
+          "stat_id_discriminator": "Discriminant des statistiques (optionnel, par défaut l'ID du site)"
+        }
       }
     },
+    "error": {
+      "invalid_auth": "Nom d'utilisateur ou mot de passe invalide.",
+      "cannot_connect": "Impossible de se connecter à Groupe-E. Vérifiez les IDs du site et du partenaire, puis réessayez.",
+      "unknown": "Erreur inattendue. Consultez les journaux pour plus de détails.",
+      "already_configured": "Ce compte et ce site sont déjà configurés."
+    },
     "abort": {
-      "already_configured": "Cet appareil est déjà configuré",
-      "already_in_progress": "La configuration est déjà en cours",
-      "oauth_error": "Erreur OAuth générique",
-      "missing_configuration": "Le composant n'est pas configuré. Veuillez suivre la documentation."
+      "already_configured": "Ce compte et ce site sont déjà configurés.",
+      "reconfigure_successful": "Configuration mise à jour avec succès."
     }
   },
   "options": {
@@ -29,10 +44,13 @@
         "data": {
           "nt_price": "Prix bas tarif (CHF/kWh)",
           "ht_price": "Prix haut tarif (CHF/kWh)",
-          "update_interval": "Intervalle de mise a jour (heures)",
-          "tariff_schedule": "Periodes haut tarif en heure suisse (ex. 07:00-12:00,17:00-23:00), valeurs par defaut 07-12, 17-23 si vide"
+          "update_interval": "Intervalle de mise à jour (heures, minimum 1, défaut 12)",
+          "tariff_schedule": "Périodes haut tarif en heure suisse (ex. 07:00-12:00,17:00-23:00), valeurs par défaut 07:00-12:00,17:00-23:00 si vide"
         }
       }
+    },
+    "error": {
+      "invalid_tariff_schedule": "Programme tarifaire invalide. Utilisez des périodes 'HH:MM-HH:MM' séparées par des virgules, ex. '07:00-12:00,17:00-23:00'."
     }
   }
 }

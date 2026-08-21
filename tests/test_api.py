@@ -103,7 +103,7 @@ class TestGetSmartmeterData:
             {
                 "id": "dailyNT",
                 "data": {
-                    "usagePointPublicId": "283122",
+                    "usagePointPublicId": "123456",
                     "from": 1795535200000,
                     "to": 1798213600000,
                     "channelCode": "CHC-Q",
@@ -114,7 +114,7 @@ class TestGetSmartmeterData:
             {
                 "id": "dailyHT",
                 "data": {
-                    "usagePointPublicId": "283122",
+                    "usagePointPublicId": "123456",
                     "from": 1795535200000,
                     "to": 1798213600000,
                     "channelCode": "CHP-Q",
@@ -279,3 +279,96 @@ class TestToEpochMs:
     def test_naive_treated_as_utc(self):
         # Naive datetimes are interpreted as UTC per the API contract.
         assert _to_epoch_ms(datetime(2026, 1, 1, 0, 0)) == 1767225600000  # noqa: DTZ001
+
+
+class TestGetSmartmeterDataPersistent401:
+    async def test_second_data_request_401_after_successful_relogin_raises(
+        self, api, mock_session
+    ):
+        """The REAL persistent-401 path: re-login succeeds but the data
+        endpoint keeps returning 401 -> GroupeEAuthError on the second try."""
+        api._token = "tok_expired"
+        api._token_expires_at = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+        data_resp_1 = _mock_response(401, {})
+        login_resp = _mock_response(
+            200, {"access_token": "tok_fresh", "expires_in": 3600}
+        )
+        data_resp_2 = _mock_response(401, {})
+
+        mock_session.post.side_effect = [
+            _mock_context_manager(data_resp_1),
+            _mock_context_manager(login_resp),
+            _mock_context_manager(data_resp_2),
+        ]
+
+        with pytest.raises(GroupeEAuthError, match="Persistent"):
+            await api.get_smartmeter_data(
+                "premise",
+                "partner",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 8, 20, tzinfo=timezone.utc),
+            )
+        # Exactly one re-login was attempted before giving up.
+        assert api._token == "tok_fresh"
+        assert mock_session.post.call_count == 3
+
+    async def test_invalid_json_payload_raises_api_error(self, api, mock_session):
+        """A 200 response with a malformed payload maps to GroupeEApiError."""
+        api._token = "tok123"
+        api._token_expires_at = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+        resp = _mock_response(200, [{"id": "quarterHourly", "data": {}}])
+        # Measurement parsing is defensive; force a payload that breaks parsing.
+        resp.json = AsyncMock(return_value=[{"id": "quarterHourly"}])
+
+        mock_session.post.return_value = _mock_context_manager(resp)
+
+        result = await api.get_smartmeter_data(
+            "premise",
+            "partner",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 8, 20, tzinfo=timezone.utc),
+        )
+        # Missing 'data' key defaults to an empty channel - must not raise.
+        assert result.channels[0].id == "quarterHourly"
+        assert result.channels[0].data.measurements == []
+
+
+class TestLogPrivacy:
+    def test_username_masked(self):
+        """Usernames are masked for logging (PII in debug logs)."""
+        from custom_components.groupe_e.api import _mask_username
+
+        assert _mask_username("someone@example.com") == "so*****@example.com"
+        assert _mask_username("ab@x.ch") == "ab***@x.ch"
+        assert _mask_username("a@x.ch") == "a***@x.ch"
+        assert _mask_username("localonly") == "lo*******"
+        # The full local part must never survive masking.
+        assert "someone" not in _mask_username("someone@example.com")
+
+    async def test_password_never_logged(self, api, mock_session, caplog):
+        """No log record may ever contain the password or the bearer token."""
+        import logging
+
+        api._token = None
+        mock_session.post.side_effect = [
+            _mock_context_manager(
+                _mock_response(200, {"access_token": "SECRET_TOKEN", "expires_in": 3600})
+            ),
+            _mock_context_manager(_mock_response(200, [{"id": "NT"}])),
+        ]
+
+        with caplog.at_level(logging.DEBUG):
+            await api.get_smartmeter_data(
+                "premise",
+                "partner",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 8, 20, tzinfo=timezone.utc),
+            )
+
+        all_output = " ".join(r.getMessage() for r in caplog.records)
+        # The fixture password is "secret", the token "SECRET_TOKEN".
+        assert "secret" not in all_output.lower()
+        assert "user@example.com" not in all_output
+        assert "us***@example.com" in all_output

@@ -3,11 +3,12 @@
     "step": {
       "user": {
         "title": "Connect to Groupe-E",
+        "description": "Enter your Groupe-E credentials and the IDs found in your portal.",
         "data": {
           "username": "Username",
           "password": "Password",
-          "premise": "Premise ID",
-          "partner": "Partner ID",
+          "premise": "Premise ID (e.g. 106180)",
+          "partner": "Partner ID (e.g. 6050184)",
           "nt_price": "Normal tariff price (CHF/kWh)",
           "ht_price": "High tariff price (CHF/kWh)",
           "stat_id_discriminator": "Statistics discriminator (optional, defaults to premise)"
@@ -19,28 +20,37 @@
         "data": {
           "username": "Username",
           "password": "Password",
-          "premise": "Premise ID",
-          "partner": "Partner ID",
+          "premise": "Premise ID (e.g. 106180)",
+          "partner": "Partner ID (e.g. 6050184)",
           "stat_id_discriminator": "Statistics discriminator (optional, defaults to premise)"
         }
       }
     },
+    "error": {
+      "invalid_auth": "Invalid username or password.",
+      "cannot_connect": "Could not connect to Groupe-E. Check your premise/partner IDs and try again.",
+      "unknown": "Unexpected error. Check the logs for details.",
+      "already_configured": "This account and premise is already configured."
+    },
     "abort": {
-      "already_configured": "This account is already configured.",
+      "already_configured": "This account and premise is already configured.",
       "reconfigure_successful": "Configuration updated successfully."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Groupe-E Options",
+        "title": "Groupe-E Settings",
         "data": {
           "nt_price": "Normal tariff price (CHF/kWh)",
           "ht_price": "High tariff price (CHF/kWh)",
           "update_interval": "Update interval (hours, minimum 1, default 12)",
-          "tariff_schedule": "High tariff periods in Swiss time (e.g. 07:00-12:00,17:00-23:00), defaults to 07-12, 17-23 if empty"
+          "tariff_schedule": "High tariff periods in Swiss time (e.g. 07:00-12:00,17:00-23:00), defaults to 07:00-12:00,17:00-23:00 if empty"
         }
       }
+    },
+    "error": {
+      "invalid_tariff_schedule": "Invalid tariff schedule. Use 'HH:MM-HH:MM' periods separated by commas, e.g. '07:00-12:00,17:00-23:00'."
     }
   }
 }

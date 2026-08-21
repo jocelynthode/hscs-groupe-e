@@ -2,18 +2,9 @@
 
 DOMAIN = "groupe_e"
 
-OAUTH2_AUTHORIZE = (
-    "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/auth"
-)
-OAUTH2_TOKEN = (
-    "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/token"
-)
-
 API_BASE_URL = "https://my.groupe-e.ch/api"
 SMARTMETER_DATA_URL = f"{API_BASE_URL}/smartmeter-data"
-USERINFO_URL = (
-    "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/userinfo"
-)
+LOGIN_URL = "https://login.my.groupe-e.ch/realms/my-groupe-e/protocol/openid-connect/token"
 
 CONF_PREMISE = "premise"
 CONF_PARTNER = "partner"
