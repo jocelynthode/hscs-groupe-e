@@ -264,7 +264,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
             1,
             statistic_id,
             True,
-            set(),
+            {"sum"},
         )
 
     def _get_ht_periods(self) -> list[dict]:
