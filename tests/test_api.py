@@ -11,6 +11,7 @@ from custom_components.groupe_e.api import (
     GroupeEAPI,
     GroupeEApiError,
     GroupeEAuthError,
+    _to_epoch_ms,
 )
 
 
@@ -88,7 +89,58 @@ class TestGetSmartmeterData:
             datetime(2026, 8, 20, tzinfo=timezone.utc),
             resolution="monthly",
         )
-        assert result == expected
+        assert result is not None
+        assert len(result.channels) == 1
+        assert result.channels[0].id == "monthlyNT"
+        assert result.channels[0].data.measurements == []
+
+    async def test_no_data_response_parses(self, api, mock_session):
+        """A valid response with empty measurementData arrays must parse without error."""
+        api._token = "tok123"
+        api._token_expires_at = datetime(2099, 1, 1, tzinfo=timezone.utc)
+        # Exact "no data" shape from api.md (daily).
+        no_data = [
+            {
+                "id": "dailyNT",
+                "data": {
+                    "usagePointPublicId": "283122",
+                    "from": 1795535200000,
+                    "to": 1798213600000,
+                    "channelCode": "CHC-Q",
+                    "unit": "kWh",
+                    "measurementData": [],
+                },
+            },
+            {
+                "id": "dailyHT",
+                "data": {
+                    "usagePointPublicId": "283122",
+                    "from": 1795535200000,
+                    "to": 1798213600000,
+                    "channelCode": "CHP-Q",
+                    "unit": "kWh",
+                    "measurementData": [],
+                },
+            },
+        ]
+        mock_session.post.return_value = _mock_context_manager(
+            _mock_response(200, no_data)
+        )
+        result = await api.get_smartmeter_data(
+            "premise",
+            "partner",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 8, 20, tzinfo=timezone.utc),
+            resolution="daily",
+        )
+        assert result is not None
+        assert len(result.channels) == 2
+        assert result.channels[0].id == "dailyNT"
+        assert result.channels[0].data.measurements == []
+        assert result.channels[1].id == "dailyHT"
+        assert result.channels[1].data.measurements == []
+        assert result.has_data is False
+        assert result.primary_channel.has_measurements is False
 
     async def test_auto_login_when_token_missing(self, api, mock_session):
         api._token = None
@@ -106,7 +158,8 @@ class TestGetSmartmeterData:
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
         )
-        assert result == [{"id": "NT"}]
+        assert result is not None
+        assert result.channels[0].id == "NT"
         assert api._token == "tok456"
 
     async def test_401_retry_then_success(self, api, mock_session):
@@ -131,7 +184,8 @@ class TestGetSmartmeterData:
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
         )
-        assert result == [{"id": "NT"}]
+        assert result is not None
+        assert result.channels[0].id == "NT"
         assert api._token == "tok_fresh"
 
     async def test_persistent_401_raises(self, api, mock_session):
@@ -205,5 +259,23 @@ class TestGetSmartmeterData:
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 8, 20, tzinfo=timezone.utc),
         )
-        assert result == [{"id": "NT"}]
+        assert result is not None
+        assert result.channels[0].id == "NT"
         assert api._token == "tok_fresh"
+
+
+class TestToEpochMs:
+    def test_utc_aware(self):
+        dt = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+        assert _to_epoch_ms(dt) == int(dt.timestamp() * 1000)
+
+    def test_other_timezone_same_instant(self):
+        from zoneinfo import ZoneInfo
+
+        utc_dt = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        zurich_dt = utc_dt.astimezone(ZoneInfo("Europe/Zurich"))
+        assert _to_epoch_ms(zurich_dt) == int(utc_dt.timestamp() * 1000)
+
+    def test_naive_treated_as_utc(self):
+        # Naive datetimes are interpreted as UTC per the API contract.
+        assert _to_epoch_ms(datetime(2026, 1, 1, 0, 0)) == 1767225600000  # noqa: DTZ001

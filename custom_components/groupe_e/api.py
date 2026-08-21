@@ -1,10 +1,11 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
+
+from .models import SmartMeterResponse
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,6 +19,17 @@ class GroupeEApiError(Exception):
 
 
 _TOKEN_GRACE = 60
+
+
+def _to_epoch_ms(dt: datetime) -> int:
+    """Convert a datetime to epoch milliseconds for the API payload.
+
+    The Groupe-E API always works in UTC. Aware datetimes keep their absolute
+    instant; naive datetimes are interpreted as UTC per the API contract.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
 
 
 class GroupeEAPI:
@@ -90,11 +102,13 @@ class GroupeEAPI:
         start: datetime,
         end: datetime,
         resolution: str = "quarter-hourly",
-    ) -> list[dict[str, Any]] | None:
+    ) -> SmartMeterResponse | None:
         """Fetch smart meter data from the Groupe-E API.
 
+        ``start``/``end`` may be any tz-aware datetime; the instant is converted
+        to a UTC epoch-millisecond payload (naive datetimes are treated as UTC).
         Automatically re-authenticates if the token is expired or on 401.
-        Returns a list of channel dicts or None.
+        Returns a parsed SmartMeterResponse or None.
         """
         if not self._token or self._token_expired:
             await self._async_login()
@@ -104,8 +118,8 @@ class GroupeEAPI:
             "Accept": "application/json",
         }
 
-        start_ts = int(start.timestamp() * 1000)
-        end_ts = int(end.timestamp() * 1000)
+        start_ts = _to_epoch_ms(start)
+        end_ts = _to_epoch_ms(end)
 
         payload = {
             "premise": premise,
@@ -152,13 +166,14 @@ class GroupeEAPI:
                         raise GroupeEApiError(f"Server error (HTTP {response.status})")
 
                     response.raise_for_status()
-                    data = await response.json()
+                    raw = await response.json()
+                    parsed = SmartMeterResponse.from_dict(raw)
                     _LOGGER.debug(
                         "Received %d Groupe-E channels for resolution=%s",
-                        len(data) if isinstance(data, list) else 0,
+                        len(parsed.channels),
                         resolution,
                     )
-                    return data
+                    return parsed
 
             except GroupeEAuthError:
                 raise

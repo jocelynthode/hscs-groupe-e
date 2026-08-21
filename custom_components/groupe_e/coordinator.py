@@ -31,37 +31,11 @@ from .const import (
     DOMAIN,
     TARIFF_TIMEZONE,
 )
+from .models import Measurement, SmartMeterResponse
 
 _LOGGER = logging.getLogger(__name__)
 
 QUARTER_HOUR_HOURS = 0.25
-
-
-def _safe_float(value: Any) -> float | None:
-    """Convert value to float or return None if not safely convertible.
-
-    Booleans are rejected to avoid True/False being interpreted as 1.0/0.0.
-    """
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_timestamp_ms(ts: Any) -> datetime | None:
-    """Parse a millisecond epoch value to a UTC-aware datetime.
-
-    Returns None for missing, boolean, or non-numeric values.
-    """
-    if ts is None or isinstance(ts, bool):
-        return None
-    if isinstance(ts, (int, float)):
-        return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
-    return None
 
 
 def _is_high_tariff(dt: datetime, ht_periods: list[dict]) -> bool:
@@ -79,7 +53,7 @@ def _is_high_tariff(dt: datetime, ht_periods: list[dict]) -> bool:
 
 
 def measurements_to_statistics_by_tariff(
-    measurements: list[dict[str, Any]],
+    measurements: list[Measurement],
     last_stats_time: float | None,
     last_nt_sum: float,
     last_ht_sum: float,
@@ -104,14 +78,8 @@ def measurements_to_statistics_by_tariff(
     """
     parsed = []
     for entry in measurements:
-        start = _parse_timestamp_ms(entry.get("timestamp"))
-        if start is None:
-            _LOGGER.debug("Skipping measurement with invalid timestamp")
-            continue
-        value = _safe_float(entry.get("value"))
-        if value is None:
-            _LOGGER.debug("Skipping measurement with invalid value at %s", start)
-            continue
+        start = entry.timestamp
+        value = entry.value
         parsed.append((start, value))
 
     parsed.sort(key=lambda x: x[0])
@@ -432,7 +400,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
                 resolution="quarter-hourly",
             )
 
-            if detailed_data and isinstance(detailed_data, list):
+            if detailed_data and detailed_data.channels:
                 await self._insert_quarter_hourly_statistics(
                     detailed_data,
                     last_nt_stat,
@@ -457,7 +425,7 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _insert_quarter_hourly_statistics(
         self,
-        data: list[dict[str, Any]],
+        response: SmartMeterResponse,
         last_nt_stat,
         last_ht_stat,
         last_total_stat,
@@ -469,15 +437,14 @@ class GroupeEDataUpdateCoordinator(DataUpdateCoordinator):
         based on local time (Europe/Zurich) and the configured tariff periods, then inserted
         into the recorder as running-sum statistic series for energy (NT, HT, total) and cost.
         """
-        channel = data[0] if data else None
-        if not channel:
-            _LOGGER.debug("No channel data in API response")
+        channel = response.primary_channel
+        if not channel or not channel.has_measurements:
+            _LOGGER.debug(
+                "No measurementData in channel response (valid no-data response)"
+            )
             return
-        measurements = channel.get("data", {}).get("measurementData", [])
-        if not measurements:
-            _LOGGER.debug("No measurementData in channel response")
-            return
-
+        measurements = channel.data.measurements
+        
         ht_periods = self._get_ht_periods()
         prices = self._get_prices()
 

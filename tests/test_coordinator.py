@@ -10,80 +10,21 @@ import pytest
 from custom_components.groupe_e.coordinator import (
     GroupeEDataUpdateCoordinator,
     _is_high_tariff,
-    _parse_timestamp_ms,
-    _safe_float,
     measurements_to_statistics_by_tariff,
 )
+from custom_components.groupe_e.models import Measurement, SmartMeterResponse
 
 ZURICH = ZoneInfo("Europe/Zurich")
 
 
-class TestSafeFloat:
-    def test_int(self):
-        assert _safe_float(42) == 42.0
-
-    def test_float(self):
-        assert _safe_float(12.34) == 12.34
-
-    def test_none(self):
-        assert _safe_float(None) is None
-
-    def test_string_numeric(self):
-        assert _safe_float("56.78") == 56.78
-
-    def test_string_non_numeric(self):
-        assert _safe_float("abc") is None
-
-    def test_empty_string(self):
-        assert _safe_float("") is None
-
-    def test_missing_key(self):
-        assert _safe_float({}.get("nope")) is None
-
-    def test_bool_true(self):
-        assert _safe_float(True) is None
-
-    def test_bool_false(self):
-        assert _safe_float(False) is None
-
-    def test_zero(self):
-        assert _safe_float(0) == 0.0
-
-
-class TestParseTimestampMs:
-    def test_valid_milliseconds(self):
-        # 2024-01-15T12:30:00Z in ms
-        result = _parse_timestamp_ms(1705321800000)
-        assert result == datetime(2024, 1, 15, 12, 30, tzinfo=timezone.utc)
-
-    def test_epoch(self):
-        result = _parse_timestamp_ms(0)
-        assert result == datetime(1970, 1, 1, tzinfo=timezone.utc)
-
-    def test_none(self):
-        assert _parse_timestamp_ms(None) is None
-
-    def test_bool(self):
-        assert _parse_timestamp_ms(True) is None
-
-    def test_string(self):
-        assert _parse_timestamp_ms("abc") is None
-
-    def test_float_ms(self):
-        result = _parse_timestamp_ms(1705321800000.5)
-        assert isinstance(result, datetime)
-        assert result.tzinfo is timezone.utc
-
-    def test_negative(self):
-        result = _parse_timestamp_ms(-1)
-        assert result is not None
-        assert result.tzinfo is timezone.utc
-
-    def test_missing_key(self):
-        assert _parse_timestamp_ms({}.get("ts")) is None
-
-
 DEFAULT_HT_PERIODS = [{"start": 7, "end": 12}, {"start": 17, "end": 23}]
+
+
+def _meas(ts, value, status="W"):
+    """Build a Measurement model instance for testing."""
+    if not isinstance(ts, datetime):
+        ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+    return Measurement(timestamp=ts, value=value, status=status)
 
 
 class TestIsHighTariff:
@@ -140,7 +81,7 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_single_hour_nt(self):
         ts = datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc)
-        measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
+        measurements = [_meas(int(ts.timestamp() * 1000), 4.0)]
         nt, ht, total, cost = measurements_to_statistics_by_tariff(
             measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
         )
@@ -162,7 +103,7 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_single_hour_ht(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
-        measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
+        measurements = [_meas(int(ts.timestamp() * 1000), 4.0)]
         nt, ht, total, cost = measurements_to_statistics_by_tariff(
             measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
         )
@@ -183,10 +124,10 @@ class TestMeasurementsToStatisticsByTariff:
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
         hour_start_ts = int(ts.timestamp() * 1000)
         measurements = [
-            {"timestamp": hour_start_ts, "value": 2.0},
-            {"timestamp": hour_start_ts + 900000, "value": 3.0},
-            {"timestamp": hour_start_ts + 1800000, "value": 1.0},
-            {"timestamp": hour_start_ts + 2700000, "value": 4.0},
+            _meas(hour_start_ts, 2.0),
+            _meas(hour_start_ts + 900000, 3.0),
+            _meas(hour_start_ts + 1800000, 1.0),
+            _meas(hour_start_ts + 2700000, 4.0),
         ]
         nt, ht, total, _ = measurements_to_statistics_by_tariff(
             measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
@@ -200,30 +141,10 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_mixed_hours_independent_tariffs(self):
         measures = [
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 3, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 16, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
+            _meas(int(datetime(2026, 8, 19, 3, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
+            _meas(int(datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
+            _meas(int(datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
+            _meas(int(datetime(2026, 8, 19, 16, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
         ]
         nt, ht, total, cost = measurements_to_statistics_by_tariff(
             measures, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
@@ -263,7 +184,7 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_cumulative_from_existing_sums(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
-        measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
+        measurements = [_meas(int(ts.timestamp() * 1000), 4.0)]
         nt, ht, total, cost = measurements_to_statistics_by_tariff(
             measurements,
             None,
@@ -290,18 +211,8 @@ class TestMeasurementsToStatisticsByTariff:
     def test_single_cutoff_skips_before(self):
         cutoff = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp()
         measures = [
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
+            _meas(int(datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
+            _meas(int(datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
         ]
         nt, ht, total, _cost = measurements_to_statistics_by_tariff(
             measures, cutoff, 5.0, 5.0, 10.0, 1.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
@@ -316,28 +227,11 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_unsorted_aggregated_by_hour(self):
         measures = [
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 17, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 16, 45, tzinfo=timezone.utc).timestamp()
-                    * 1000
-                ),
-                "value": 4.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 17, 15, tzinfo=timezone.utc).timestamp()
-                    * 1000
-                ),
-                "value": 4.0,
-            },
+            _meas(int(datetime(2026, 8, 19, 17, 0, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
+            _meas(int(datetime(2026, 8, 19, 16, 45, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
+            _meas(int(datetime(2026, 8, 19, 17, 15, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
         ]
-        nt, ht, total, _cost = measurements_to_statistics_by_tariff(
+        nt, ht, total, _ = measurements_to_statistics_by_tariff(
             measures, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
         )
         assert len(nt) == 2
@@ -354,7 +248,7 @@ class TestMeasurementsToStatisticsByTariff:
     def test_tariff_uses_local_timezone(self):
         ts = int(datetime(2026, 8, 19, 15, 0, tzinfo=timezone.utc).timestamp() * 1000)
         nt, ht, _total, _cost = measurements_to_statistics_by_tariff(
-            [{"timestamp": ts, "value": 4.0}],
+            [_meas(ts, 4.0)],
             None,
             0.0,
             0.0,
@@ -373,7 +267,7 @@ class TestMeasurementsToStatisticsByTariff:
     def test_summer_time_tariff(self):
         ts = int(datetime(2026, 8, 19, 15, 0, tzinfo=timezone.utc).timestamp() * 1000)
         _, ht, _, _ = measurements_to_statistics_by_tariff(
-            [{"timestamp": ts, "value": 4.0}],
+            [_meas(ts, 4.0)],
             None,
             0.0,
             0.0,
@@ -389,7 +283,7 @@ class TestMeasurementsToStatisticsByTariff:
     def test_winter_time_tariff(self):
         ts = int(datetime(2026, 1, 15, 16, 0, tzinfo=timezone.utc).timestamp() * 1000)
         _, ht, _, _ = measurements_to_statistics_by_tariff(
-            [{"timestamp": ts, "value": 4.0}],
+            [_meas(ts, 4.0)],
             None,
             0.0,
             0.0,
@@ -404,7 +298,7 @@ class TestMeasurementsToStatisticsByTariff:
 
     def test_timestamps_at_top_of_hour(self):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
-        measurements = [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
+        measurements = [_meas(int(ts.timestamp() * 1000), 4.0)]
         nt, ht, _total, _cost = measurements_to_statistics_by_tariff(
             measurements, None, 0.0, 0.0, 0.0, 0.0, DEFAULT_HT_PERIODS, ZURICH, 0.2, 0.3
         )
@@ -416,19 +310,8 @@ class TestMeasurementsToStatisticsByTariff:
     def test_cutoff_skips_equal_timestamp(self):
         cutoff = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp()
         measures = [
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 2.0,
-            },
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 12, 15, tzinfo=timezone.utc).timestamp()
-                    * 1000
-                ),
-                "value": 4.0,
-            },
+            _meas(int(datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).timestamp() * 1000), 2.0),
+            _meas(int(datetime(2026, 8, 19, 12, 15, tzinfo=timezone.utc).timestamp() * 1000), 4.0),
         ]
         nt, ht, total, _cost = measurements_to_statistics_by_tariff(
             measures,
@@ -447,34 +330,14 @@ class TestMeasurementsToStatisticsByTariff:
         assert nt[0]["sum"] == 6.0
         assert total[0]["sum"] == 11.0
 
-    def test_invalid_measurements_are_skipped(self):
-        measures = [
-            {"timestamp": "invalid", "value": 4.0},
-            {"timestamp": 1234567890000, "value": "abc"},
-            {"timestamp": 1234567890000, "value": True},
-            {
-                "timestamp": int(
-                    datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc).timestamp() * 1000
-                ),
-                "value": 4.0,
-            },
-        ]
-        nt, ht, total, _cost = measurements_to_statistics_by_tariff(
-            measures,
-            None,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            DEFAULT_HT_PERIODS,
-            ZURICH,
-            0.2,
-            0.3,
-        )
-        assert len(nt) == 1
-        assert len(ht) == 1
-        assert nt[0]["state"] == 1.0
-        assert total[0]["state"] == 1.0
+    def test_invalid_measurements_raise_at_parse(self):
+        """Malformed measurements now raise at Measurement construction."""
+        with pytest.raises((TypeError, ValueError)):
+            Measurement.from_dict({"timestamp": "invalid", "value": 4.0})
+        with pytest.raises((TypeError, ValueError)):
+            Measurement.from_dict({"timestamp": 1234567890000, "value": "abc"})
+        with pytest.raises((TypeError, ValueError)):
+            Measurement.from_dict({"timestamp": 1234567890000, "value": True})
 
 
 class TestReinsertPreStats:
@@ -551,7 +414,6 @@ class TestInsertQuarterHourlyStatistics:
     def coordinator(self):
         """Create a coordinator mock with the real method bound."""
         coord = MagicMock(spec=GroupeEDataUpdateCoordinator)
-        coord.premise = "283122"
         coord._normal_tariff_qh_id = "groupe_e:energy_consumption_283122_normal_tariff"
         coord._high_tariff_qh_id = "groupe_e:energy_consumption_283122_high_tariff"
         coord._total_energy_qh_id = "groupe_e:energy_consumption_283122_total"
@@ -568,19 +430,18 @@ class TestInsertQuarterHourlyStatistics:
         )
         return coord
 
+    def _response(self, measurements):
+        return SmartMeterResponse.from_dict(
+            [{"id": "quarterHourly", "data": {"measurementData": measurements}}]
+        )
+
     async def test_sets_latest_sums_with_data(self, coordinator):
         ts = datetime(2026, 8, 19, 8, 0, tzinfo=timezone.utc)
-        data = [
-            {
-                "data": {
-                    "measurementData": [
-                        {"timestamp": int(ts.timestamp() * 1000), "value": 4.0}
-                    ]
-                }
-            }
-        ]
+        response = self._response(
+            [{"timestamp": int(ts.timestamp() * 1000), "value": 4.0}]
+        )
         await coordinator._insert_quarter_hourly_statistics(
-            data, None, None, None, None
+            response, None, None, None, None
         )
         assert coordinator._latest_nt_sum == 0.0
         assert coordinator._latest_ht_sum == 1.0
@@ -608,24 +469,20 @@ class TestInsertQuarterHourlyStatistics:
         cost_stat = {
             coordinator._cost_qh_id: [{"start": existing_hour.timestamp(), "sum": 12.0}]
         }
-        data = [
-            {
-                "data": {
-                    "measurementData": [
-                        {"timestamp": int(new_hour.timestamp() * 1000), "value": 4.0}
-                    ]
-                }
-            }
-        ]
+        response = self._response(
+            [{"timestamp": int(new_hour.timestamp() * 1000), "value": 4.0}]
+        )
         await coordinator._insert_quarter_hourly_statistics(
-            data, nt_stat, ht_stat, total_stat, cost_stat
+            response, nt_stat, ht_stat, total_stat, cost_stat
         )
         assert coordinator._latest_nt_sum == 50.0
         assert coordinator._latest_ht_sum == 61.0
         assert coordinator._latest_total_sum == 111.0
 
     async def test_no_channel_data(self, coordinator):
-        await coordinator._insert_quarter_hourly_statistics([], None, None, None, None)
+        await coordinator._insert_quarter_hourly_statistics(
+            SmartMeterResponse(), None, None, None, None
+        )
         coordinator._insert_statistics.assert_not_called()
         assert coordinator._latest_nt_sum is None
         assert coordinator._latest_ht_sum is None
@@ -633,9 +490,9 @@ class TestInsertQuarterHourlyStatistics:
         assert coordinator._latest_cost_sum is None
 
     async def test_no_measurements(self, coordinator):
-        data = [{"data": {"measurementData": []}}]
+        response = self._response([])
         await coordinator._insert_quarter_hourly_statistics(
-            data, None, None, None, None
+            response, None, None, None, None
         )
         coordinator._insert_statistics.assert_not_called()
         assert coordinator._latest_nt_sum is None
