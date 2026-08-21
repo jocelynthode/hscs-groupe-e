@@ -22,6 +22,19 @@
 - **"missing NT/HT tariff prices" warning**: your entry lost its prices to a v2.0.0 reconfigure bug. Set both prices under **Configure** (options) — until then, cost statistics are computed at 0 CHF/kWh. Existing cost statistics inserted while prices were missing can be corrected with `groupe_e.reset_statistics` (optionally with `rebuild_since`).
 - Migration runs automatically on restart; entities, history, and Energy Dashboard links are preserved.
 
+## Daily totals differ slightly from Groupe-E's portal/app
+
+If you compare the Energy Dashboard's daily consumption against the official Groupe-E daily figures, they differ by a small amount (typically ±0.1 kWh). This is expected and not a bug, no measurement is double-counted or lost.
+
+**Why:** Groupe-E's quarter-hourly API delivers 96 points per day, timestamped 00:15 through 24:00. The point at 24:00 (midnight) is the reading for the quarter 00:00–00:15, but Groupe-E's own daily aggregate counts it as part of the day that is _ending_. The integration instead buckets measurements by their hour start, so the midnight point lands in the first hour of the _following_ day.
+
+Concretely, for a day where the midnight reading is 0.6 kW (0.15 kWh):
+
+- Groupe-E daily total: points 00:15–24:00 of that day (midnight point included)
+- Integration daily total: previous day's midnight point + points 00:15–23:45
+
+The difference between the two is always `(midnight reading of this day) − (midnight reading of the next day)`, oscillates around zero, and never accumulates. The cumulative (`sum`) statistics remain exact.
+
 ## Authentication errors
 
 - **Wrong credentials**: use **Reconfigure** (three-dot menu on the integration) to update username/password.
